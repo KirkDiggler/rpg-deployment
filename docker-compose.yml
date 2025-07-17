@@ -90,4 +90,3 @@ networks:
 
 volumes:
   redis_dev_data:
-  certs:

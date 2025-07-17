@@ -11,7 +11,7 @@ Complete deployment pipeline for the RPG gaming platform with modular architectu
 - **rpg-api**: Go gRPC server (separate repository)
 - **rpg-dnd5e-web**: React frontend (separate repository)
 - **rpg-deployment**: This orchestration repository
-- **nginx**: Load balancer and SSL termination
+- **nginx**: Load balancer with automatic SSL via Let's Encrypt
 - **envoy**: gRPC-Web proxy for browser compatibility
 - **redis**: In-memory data store for session and character data
 
@@ -90,6 +90,8 @@ After deployment completes, GitHub Actions will show you:
 - **API Endpoint**: `http://YOUR-IP/api/` (gRPC-Web via Envoy proxy)
 - **Health Check**: `http://YOUR-IP/health`
 - **Deployment Status**: Check the Actions tab for real-time progress
+
+**For SSL/HTTPS Setup**: See [SSL_SETUP.md](SSL_SETUP.md) for automatic Let's Encrypt configuration
 
 ## 🔄 How It All Works
 
@@ -517,6 +519,7 @@ docker system prune -a
 
 ## 📚 Additional Resources
 
+- **SSL Setup Guide**: [SSL_SETUP.md](SSL_SETUP.md) - Automatic Let's Encrypt SSL configuration
 - **AWS Documentation**: [CloudFormation User Guide](https://docs.aws.amazon.com/cloudformation/)
 - **Docker Compose**: [Official Documentation](https://docs.docker.com/compose/)
 - **nginx Configuration**: [nginx.org](https://nginx.org/en/docs/)
@@ -570,7 +573,7 @@ Your modular RPG platform will be live in ~15 minutes! 🎮
 - **Rollback capability** via git revert
 
 ### 🏗️ Production-Ready Architecture
-- **Load balancer** (nginx) with rate limiting
+- **Load balancer** (nginx) with rate limiting and automatic SSL
 - **gRPC-Web proxy** (Envoy) for browser compatibility
 - **Container orchestration** with health checks
 - **Resource monitoring** and cost tracking

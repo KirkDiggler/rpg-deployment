@@ -66,15 +66,20 @@ services:
       - rpg-network
 
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
     container_name: rpg-nginx
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - certbot-conf:/etc/letsencrypt:rw
+      - certbot-www:/var/www/certbot:rw
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - EMAIL=${EMAIL}
     depends_on:
       - rpg-api
       - rpg-web
@@ -88,4 +93,5 @@ networks:
 
 volumes:
   redis_data:
-  certs:
+  certbot-conf:
+  certbot-www:
