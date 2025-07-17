@@ -235,7 +235,7 @@ Resources:
           echo "=== Installing Docker Compose plugin ==="
           mkdir -p /usr/local/lib/docker/cli-plugins
           COMPOSE_VERSION="v2.24.1"
-          curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+          curl -SL "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to download Docker Compose"
             /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
