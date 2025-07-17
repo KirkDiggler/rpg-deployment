@@ -6,7 +6,7 @@ services:
     container_name: rpg-redis-dev
     restart: unless-stopped
     ports:
-      - "6379:6379"  # Expose for local development
+      - "6380:6379"  # Expose on 6380 for local development (6379 is in use)
     volumes:
       - redis_dev_data:/data
     networks:
@@ -40,6 +40,20 @@ services:
       timeout: 10s
       retries: 3
 
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: rpg-envoy
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - rpg-api
+    networks:
+      - rpg-network
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info
+
   rpg-web:
     build:
       context: ../rpg-dnd5e-web
@@ -66,6 +80,7 @@ services:
     depends_on:
       - rpg-api
       - rpg-web
+      - envoy
     networks:
       - rpg-network
 
