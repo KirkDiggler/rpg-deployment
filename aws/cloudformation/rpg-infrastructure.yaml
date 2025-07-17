@@ -254,46 +254,23 @@ Resources:
           mkdir -p /opt/rpg-deployment
           chown ubuntu:ubuntu /opt/rpg-deployment
           
-          # Create directory structure and clone repositories
-          echo "=== Creating directory structure ==="
-          cd /opt
-          mkdir -p rpg-apps
-          chown ubuntu:ubuntu rpg-apps
-          cd rpg-apps
-          
-          echo "=== Cloning repositories ==="
+          # Clone deployment repository only (using pre-built images)
+          echo "=== Cloning rpg-deployment repository ==="
           START_TIME=$(date +%s)
-          
-          echo "Cloning rpg-deployment..."
-          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-deployment.git
+          cd /opt/rpg-deployment
+          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-deployment.git .
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to clone rpg-deployment repository"
             /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
             exit 1
           fi
           
-          echo "Cloning rpg-api..."
-          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-api.git
-          if [ $? -ne 0 ]; then
-            echo "ERROR: Failed to clone rpg-api repository"
-            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
-            exit 1
-          fi
-          
-          echo "Cloning rpg-dnd5e-web..."
-          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-dnd5e-web.git
-          if [ $? -ne 0 ]; then
-            echo "ERROR: Failed to clone rpg-dnd5e-web repository"
-            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
-            exit 1
-          fi
-          
           END_TIME=$(date +%s)
-          echo "=== Repositories cloned in $((END_TIME - START_TIME)) seconds ==="
+          echo "=== Repository cloned in $((END_TIME - START_TIME)) seconds ==="
           
           # Start the application
           echo "=== Starting application with docker compose ==="
-          cd /opt/rpg-apps/rpg-deployment
+          cd /opt/rpg-deployment
           START_TIME=$(date +%s)
           sudo -u ubuntu docker compose up -d
           END_TIME=$(date +%s)
