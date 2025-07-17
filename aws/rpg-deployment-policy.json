@@ -27,6 +27,8 @@
         "ec2:CreateTags",
         "ec2:RunInstances",
         "ec2:TerminateInstances",
+        "ec2:StopInstances",
+        "ec2:StartInstances",
         "ec2:CreateSecurityGroup",
         "ec2:AuthorizeSecurityGroupIngress",
         "ec2:AuthorizeSecurityGroupEgress",
