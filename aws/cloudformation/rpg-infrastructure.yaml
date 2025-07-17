@@ -171,13 +171,15 @@ Resources:
           # Enable debugging and logging
           exec > >(tee /var/log/user-data.log)
           exec 2>&1
+          SCRIPT_START=$(date +%s)
           echo "=== Starting user data script at $(date) ==="
           
           # Function to signal we're still alive
           heartbeat() {
             while true; do
               echo "=== Heartbeat at $(date) - script still running ==="
-              sleep 60
+              ps aux | grep -E '(docker|git|apt)' | grep -v grep || true
+              sleep 30
             done
           }
           
@@ -259,7 +261,10 @@ Resources:
           chown ubuntu:ubuntu rpg-apps
           cd rpg-apps
           
-          echo "=== Cloning rpg-deployment repository ==="
+          echo "=== Cloning repositories ==="
+          START_TIME=$(date +%s)
+          
+          echo "Cloning rpg-deployment..."
           sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-deployment.git
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to clone rpg-deployment repository"
@@ -267,7 +272,7 @@ Resources:
             exit 1
           fi
           
-          echo "=== Cloning rpg-api repository ==="
+          echo "Cloning rpg-api..."
           sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-api.git
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to clone rpg-api repository"
@@ -275,7 +280,7 @@ Resources:
             exit 1
           fi
           
-          echo "=== Cloning rpg-dnd5e-web repository ==="
+          echo "Cloning rpg-dnd5e-web..."
           sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-dnd5e-web.git
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to clone rpg-dnd5e-web repository"
@@ -283,10 +288,16 @@ Resources:
             exit 1
           fi
           
+          END_TIME=$(date +%s)
+          echo "=== Repositories cloned in $((END_TIME - START_TIME)) seconds ==="
+          
           # Start the application
           echo "=== Starting application with docker compose ==="
           cd /opt/rpg-apps/rpg-deployment
+          START_TIME=$(date +%s)
           sudo -u ubuntu docker compose up -d
+          END_TIME=$(date +%s)
+          echo "=== Docker compose completed in $((END_TIME - START_TIME)) seconds ==="
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to start application"
             /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
