@@ -95,8 +95,8 @@
         "cloudformation:ListStackResources"
       ],
       "Resource": [
-        "arn:aws:cloudformation:us-east-1:*:stack/rpg-gaming-platform/*",
-        "arn:aws:cloudformation:us-east-1:*:stack/rpg-gaming-platform"
+        "arn:aws:cloudformation:us-west-2:*:stack/rpg-gaming-platform/*",
+        "arn:aws:cloudformation:us-west-2:*:stack/rpg-gaming-platform"
       ]
     },
     {
