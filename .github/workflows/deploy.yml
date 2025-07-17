@@ -7,98 +7,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  API_IMAGE_NAME: ${{ github.repository }}/rpg-api
-  WEB_IMAGE_NAME: ${{ github.repository }}/rpg-web
-
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      api-image: ${{ steps.meta-api.outputs.tags }}
-      web-image: ${{ steps.meta-web.outputs.tags }}
-
-    steps:
-      - name: Checkout deployment repo
-        uses: actions/checkout@v4
-        with:
-          path: deployment
-
-      - name: Checkout rpg-api
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/rpg-api
-          path: rpg-api
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Checkout rpg-dnd5e-web
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/rpg-dnd5e-web
-          path: rpg-dnd5e-web
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata for API
-        id: meta-api
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Extract metadata for Web
-        id: meta-web
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push API image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./rpg-api
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-api.outputs.tags }}
-          labels: ${{ steps.meta-api.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Web image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./rpg-dnd5e-web
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-web.outputs.tags }}
-          labels: ${{ steps.meta-web.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
-    needs: build-and-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
@@ -117,7 +27,7 @@ jobs:
       - name: Deploy infrastructure (if needed)
         run: |
           # Check if stack exists, deploy if not
-          if ! aws cloudformation describe-stacks --stack-name rpg-gaming-platform --region us-east-1 >/dev/null 2>&1; then
+          if ! aws cloudformation describe-stacks --stack-name rpg-gaming-platform --region us-west-2 >/dev/null 2>&1; then
             echo "Stack doesn't exist, deploying infrastructure..."
             aws cloudformation deploy \
               --template-file aws/cloudformation/rpg-infrastructure.yaml \
@@ -178,25 +88,26 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
               "echo \"Starting deployment at $(date)\"",
-              "cd /opt/rpg-deployment || (sudo mkdir -p /opt/rpg-deployment && sudo chown ec2-user:ec2-user /opt/rpg-deployment && cd /opt/rpg-deployment)",
-              "if [ ! -d .git ]; then git clone https://github.com/${{ github.repository }}.git . ; fi",
-              "git fetch origin main",
-              "git reset --hard origin/main",
+              "cd /opt/rpg-deployment",
+              "echo \"Pulling latest configuration...\"",
+              "sudo -u ubuntu git fetch origin main",
+              "sudo -u ubuntu git reset --hard origin/main",
+              "echo \"Setting up environment...\"",
               "echo \"GITHUB_REPOSITORY=${{ github.repository }}\" > .env",
               "echo \"DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}\" >> .env",
               "echo \"EMAIL=${{ secrets.SSL_EMAIL }}\" >> .env",
               "echo \"Logging into GitHub Container Registry...\"",
               "echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin",
-              "echo \"Pulling latest images...\"",
-              "docker-compose -f docker-compose.prod.yml pull",
+              "echo \"Pulling latest pre-built images...\"",
+              "docker compose pull",
               "echo \"Stopping existing containers...\"",
-              "docker-compose -f docker-compose.prod.yml down",
+              "docker compose down",
               "echo \"Starting new containers...\"",
-              "docker-compose -f docker-compose.prod.yml up -d",
+              "docker compose up -d",
               "echo \"Waiting for services to start...\"",
               "sleep 15",
               "echo \"Checking container status:\"",
-              "docker-compose -f docker-compose.prod.yml ps",
+              "docker compose ps",
               "echo \"Cleaning up old images...\"",
               "docker image prune -f",
               "echo \"Deployment completed at $(date)\""
@@ -266,12 +177,12 @@ jobs:
             echo "✅ **Status**: Deployment successful!" >> $GITHUB_STEP_SUMMARY
             echo "🌐 **Application URL**: http://$PUBLIC_IP" >> $GITHUB_STEP_SUMMARY
             echo "📊 **Health Check**: http://$PUBLIC_IP/health" >> $GITHUB_STEP_SUMMARY
-            echo "🐳 **Docker Images**: Built and deployed" >> $GITHUB_STEP_SUMMARY
+            echo "🐳 **Docker Images**: Pre-built images from GHCR" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Status**: Deployment failed!" >> $GITHUB_STEP_SUMMARY
             echo "🔍 **Logs**: Check the job output for details" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Built Images**:" >> $GITHUB_STEP_SUMMARY
-          echo "- API: \`${{ needs.build-and-push.outputs.api-image }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Web: \`${{ needs.build-and-push.outputs.web-image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-built Images Used**:" >> $GITHUB_STEP_SUMMARY
+          echo "- API: \`ghcr.io/kirkdiggler/rpg-api:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Web: \`ghcr.io/kirkdiggler/rpg-dnd5e-web:latest\`" >> $GITHUB_STEP_SUMMARY
