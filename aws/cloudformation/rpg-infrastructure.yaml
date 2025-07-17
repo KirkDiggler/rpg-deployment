@@ -26,9 +26,9 @@ Parameters:
 Mappings:
   RegionMap:
     us-east-1:
-      AMI: ami-0440d3b780d96b29d  # Amazon Linux 2023
+      AMI: ami-0e86e20dae9224db8  # Ubuntu 24.04 LTS
     us-west-2:
-      AMI: ami-04dd23e62ed049936  # Amazon Linux 2023 (latest for us-west-2)
+      AMI: ami-0075013580f6322a1  # Ubuntu 24.04 LTS (latest for us-west-2)
 
 Resources:
   # VPC
@@ -173,15 +173,39 @@ Resources:
           exec 2>&1
           echo "=== Starting user data script at $(date) ==="
           
-          # Update system
-          echo "=== Updating system packages ==="
-          yum update -y
+          # Function to signal we're still alive
+          heartbeat() {
+            while true; do
+              echo "=== Heartbeat at $(date) - script still running ==="
+              sleep 60
+            done
+          }
           
-          # Install Docker
-          echo "=== Installing Docker ==="
-          yum install -y docker
+          # Start heartbeat in background
+          heartbeat &
+          HEARTBEAT_PID=$!
+          
+          # Ensure we kill heartbeat on exit
+          trap "kill $HEARTBEAT_PID 2>/dev/null" EXIT
+          
+          # Write instance info
+          echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          echo "AMI ID: $(curl -s http://169.254.169.254/latest/meta-data/ami-id)"
+          echo "Instance Type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
+          
+          # Update system with timeout
+          echo "=== Updating system packages (5 min timeout) ==="
+          export DEBIAN_FRONTEND=noninteractive
+          timeout 300 apt-get update && timeout 300 apt-get upgrade -y
+          if [ $? -eq 124 ]; then
+            echo "WARNING: apt update/upgrade timed out after 5 minutes, continuing anyway"
+          fi
+          
+          # Install required packages
+          echo "=== Installing required packages ==="
+          apt-get install -y docker.io curl
           if [ $? -ne 0 ]; then
-            echo "ERROR: Failed to install Docker"
+            echo "ERROR: Failed to install required packages"
             /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
             exit 1
           fi
@@ -191,34 +215,35 @@ Resources:
           systemctl start docker
           systemctl enable docker
           
-          # Add ec2-user to docker group
-          echo "=== Adding ec2-user to docker group ==="
-          usermod -aG docker ec2-user
+          # Add ubuntu user to docker group
+          echo "=== Adding ubuntu user to docker group ==="
+          usermod -aG docker ubuntu
           
           # Test Docker
           echo "=== Testing Docker installation ==="
           docker --version
           docker run hello-world
           
-          # Install Docker Compose
-          echo "=== Installing Docker Compose ==="
+          # Install Docker Compose plugin (modern way)
+          echo "=== Installing Docker Compose plugin ==="
+          mkdir -p /usr/local/lib/docker/cli-plugins
           COMPOSE_VERSION="v2.24.1"
-          curl -L "https://github.com/docker/compose/releases/download/${!COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
           if [ $? -ne 0 ]; then
             echo "ERROR: Failed to download Docker Compose"
             /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
             exit 1
           fi
-          chmod +x /usr/local/bin/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           
           # Test Docker Compose
           echo "=== Testing Docker Compose ==="
-          /usr/local/bin/docker-compose --version
+          docker compose version
           
           # Create deployment directory
           echo "=== Creating deployment directory ==="
           mkdir -p /opt/rpg-deployment
-          chown ec2-user:ec2-user /opt/rpg-deployment
+          chown ubuntu:ubuntu /opt/rpg-deployment
           
           # Skip CloudWatch agent for now - we can add it later
           echo "=== Skipping CloudWatch agent installation ==="
@@ -233,7 +258,7 @@ Resources:
           Value: !Ref Environment
     CreationPolicy:
       ResourceSignal:
-        Timeout: PT10M
+        Timeout: PT20M
 
   # Elastic IP
   RPGElasticIP:
@@ -270,7 +295,7 @@ Outputs:
 
   SSHCommand:
     Description: SSH command to connect
-    Value: !Sub "ssh -i ~/.ssh/${KeyPairName}.pem ec2-user@${RPGElasticIP}"
+    Value: !Sub "ssh -i ~/.ssh/${KeyPairName}.pem ubuntu@${RPGElasticIP}"
 
   VpcId:
     Description: VPC ID for future use
