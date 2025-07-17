@@ -1,0 +1,51 @@
+# Environment files
+.env
+.env.local
+.env.production
+
+# AWS credentials (never commit these!)
+aws-credentials.txt
+*.pem
+*.key
+
+# Docker
+.docker/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# SSL certificates (if using custom certs)
+nginx/certs/*.pem
+nginx/certs/*.key
+nginx/certs/*.crt
+
+# Backup files
+*.bak
+*.backup
+
+# Node modules (if any npm scripts are added later)
+node_modules/
+
+# Terraform state (if using terraform)
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# CloudFormation outputs
+cloudformation-outputs.json

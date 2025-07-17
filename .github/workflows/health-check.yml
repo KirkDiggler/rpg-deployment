@@ -1,0 +1,74 @@
+name: Health Check
+
+on:
+  schedule:
+    # Check every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Get application URL
+        id: get-url
+        run: |
+          PUBLIC_IP=$(aws cloudformation describe-stacks \
+            --stack-name rpg-gaming-platform \
+            --region us-west-2 \
+            --query 'Stacks[0].Outputs[?OutputKey==`PublicIP`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "$PUBLIC_IP" ]; then
+            echo "url=http://$PUBLIC_IP" >> $GITHUB_OUTPUT
+            echo "ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+          else
+            echo "No deployment found"
+            exit 1
+          fi
+
+      - name: Check application health
+        run: |
+          URL="${{ steps.get-url.outputs.url }}"
+          echo "Checking health of: $URL"
+          
+          # Check main application
+          if curl -f -s --max-time 10 "$URL" > /dev/null; then
+            echo "✅ Main application is healthy"
+          else
+            echo "❌ Main application is not responding"
+            exit 1
+          fi
+          
+          # Check health endpoint
+          if curl -f -s --max-time 10 "$URL/health" | grep -q "healthy"; then
+            echo "✅ Health endpoint is working"
+          else
+            echo "❌ Health endpoint is not working"
+            exit 1
+          fi
+          
+          # Test gRPC-Web API endpoint
+          if curl -f -s --max-time 10 -H "Content-Type: application/grpc-web+proto" "$URL/api/" > /dev/null; then
+            echo "✅ gRPC-Web API is responding"
+          else
+            echo "❌ gRPC-Web API is not responding"
+            exit 1
+          fi
+
+      - name: Update status badge
+        if: always()
+        run: |
+          IP="${{ steps.get-url.outputs.ip }}"
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ All health checks passed for IP: $IP"
+          else
+            echo "❌ Health checks failed for IP: $IP"
+          fi

@@ -1,0 +1,241 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RPG Gaming Platform - EC2 Infrastructure for Low Traffic'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging, development]
+    Description: Environment name
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t3.small, t3.medium]
+    Description: EC2 instance type (t3.micro is free tier eligible)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for SSH access
+
+  AllowedCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed SSH access (use your IP for better security)
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0440d3b780d96b29d  # Amazon Linux 2023
+    us-west-2:
+      AMI: ami-04dd23e62ed049936  # Amazon Linux 2023 (latest for us-west-2)
+
+Resources:
+  # VPC
+  RPGVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-vpc"
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-igw"
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref RPGVpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnet
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref RPGVpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-public-subnet"
+
+  # Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref RPGVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-public-rt"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Security Group
+  RPGSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RPG server
+      VpcId: !Ref RPGVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCIDR
+          Description: SSH access
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS access
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: All outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-sg"
+
+  # IAM Role for EC2 (for future AWS service access)
+  RPGInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-instance-role"
+
+  RPGInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref RPGInstanceRole
+
+  # EC2 Instance
+  RPGServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref RPGSecurityGroup
+      IamInstanceProfile: !Ref RPGInstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 30  # 30GB for OS + Docker images + Redis data
+            DeleteOnTermination: true
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y docker git
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ec2-user
+          
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+          
+          # Create deployment directory
+          mkdir -p /opt/rpg-deployment
+          chown ec2-user:ec2-user /opt/rpg-deployment
+          
+          # Install CloudWatch agent (for monitoring)
+          wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+          rpm -U ./amazon-cloudwatch-agent.rpm
+          
+          # Signal completion
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-server"
+        - Key: Environment
+          Value: !Ref Environment
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+
+  # Elastic IP
+  RPGElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref RPGServer
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-rpg-eip"
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref RPGServer
+    Export:
+      Name: !Sub "${Environment}-rpg-instance-id"
+
+  PublicIP:
+    Description: Public IP address
+    Value: !Ref RPGElasticIP
+    Export:
+      Name: !Sub "${Environment}-rpg-public-ip"
+
+  PublicDNS:
+    Description: Public DNS name
+    Value: !GetAtt RPGServer.PublicDnsName
+    Export:
+      Name: !Sub "${Environment}-rpg-public-dns"
+
+  ApplicationURL:
+    Description: Application URL
+    Value: !Sub "http://${RPGElasticIP}"
+
+  SSHCommand:
+    Description: SSH command to connect
+    Value: !Sub "ssh -i ~/.ssh/${KeyPairName}.pem ec2-user@${RPGElasticIP}"
+
+  VpcId:
+    Description: VPC ID for future use
+    Value: !Ref RPGVpc
+    Export:
+      Name: !Sub "${Environment}-rpg-vpc-id"

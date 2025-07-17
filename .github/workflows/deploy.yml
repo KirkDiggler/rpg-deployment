@@ -1,0 +1,275 @@
+name: Deploy RPG Platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE_NAME: ${{ github.repository }}/rpg-api
+  WEB_IMAGE_NAME: ${{ github.repository }}/rpg-web
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api-image: ${{ steps.meta-api.outputs.tags }}
+      web-image: ${{ steps.meta-web.outputs.tags }}
+
+    steps:
+      - name: Checkout deployment repo
+        uses: actions/checkout@v4
+        with:
+          path: deployment
+
+      - name: Checkout rpg-api
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/rpg-api
+          path: rpg-api
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Checkout rpg-dnd5e-web
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/rpg-dnd5e-web
+          path: rpg-dnd5e-web
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata for Web
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./rpg-api
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./rpg-dnd5e-web
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Deploy infrastructure (if needed)
+        run: |
+          # Check if stack exists, deploy if not
+          if ! aws cloudformation describe-stacks --stack-name rpg-gaming-platform --region us-east-1 >/dev/null 2>&1; then
+            echo "Stack doesn't exist, deploying infrastructure..."
+            aws cloudformation deploy \
+              --template-file aws/cloudformation/rpg-infrastructure.yaml \
+              --stack-name rpg-gaming-platform \
+              --parameter-overrides \
+                Environment=production \
+                InstanceType=t3.micro \
+                KeyPairName=${{ secrets.AWS_KEY_PAIR_NAME }} \
+              --capabilities CAPABILITY_IAM \
+              --region us-west-2 \
+              --tags \
+                Environment=production \
+                Project=RPG-Gaming-Platform \
+                Owner=github-actions
+          else
+            echo "Stack exists, skipping infrastructure deployment"
+          fi
+
+      - name: Get EC2 instance info
+        id: get-instance
+        run: |
+          PUBLIC_IP=$(aws cloudformation describe-stacks \
+            --stack-name rpg-gaming-platform \
+            --region us-west-2 \
+            --query 'Stacks[0].Outputs[?OutputKey==`PublicIP`].OutputValue' \
+            --output text)
+          
+          INSTANCE_ID=$(aws cloudformation describe-stacks \
+            --stack-name rpg-gaming-platform \
+            --region us-west-2 \
+            --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
+            --output text)
+          
+          echo "public-ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+          echo "instance-id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for SSM agent
+        run: |
+          echo "Waiting for SSM agent to be online..."
+          for i in {1..30}; do
+            if aws ssm describe-instance-information \
+              --instance-information-filter-list key=InstanceIds,valueSet=${{ steps.get-instance.outputs.instance-id }} \
+              --region us-west-2 \
+              --query 'InstanceInformationList[0].PingStatus' \
+              --output text | grep -q "Online"; then
+              echo "SSM agent is online!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 30
+          done
+
+      - name: Deploy application via SSM
+        id: deploy-app
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --region us-west-2 \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "echo \"Starting deployment at $(date)\"",
+              "cd /opt/rpg-deployment || (sudo mkdir -p /opt/rpg-deployment && sudo chown ec2-user:ec2-user /opt/rpg-deployment && cd /opt/rpg-deployment)",
+              "if [ ! -d .git ]; then git clone https://github.com/${{ github.repository }}.git . ; fi",
+              "git fetch origin main",
+              "git reset --hard origin/main",
+              "echo \"GITHUB_REPOSITORY=${{ github.repository }}\" > .env",
+              "echo \"Logging into GitHub Container Registry...\"",
+              "echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin",
+              "echo \"Pulling latest images...\"",
+              "docker-compose -f docker-compose.prod.yml pull",
+              "echo \"Stopping existing containers...\"",
+              "docker-compose -f docker-compose.prod.yml down",
+              "echo \"Starting new containers...\"",
+              "docker-compose -f docker-compose.prod.yml up -d",
+              "echo \"Waiting for services to start...\"",
+              "sleep 15",
+              "echo \"Checking container status:\"",
+              "docker-compose -f docker-compose.prod.yml ps",
+              "echo \"Cleaning up old images...\"",
+              "docker image prune -f",
+              "echo \"Deployment completed at $(date)\""
+            ]' \
+            --targets "Key=InstanceIds,Values=${{ steps.get-instance.outputs.instance-id }}" \
+            --comment "Deploy RPG Platform from GitHub Actions" \
+            --output text --query 'Command.CommandId')
+          
+          echo "command-id=$COMMAND_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for deployment completion
+        run: |
+          echo "Waiting for deployment command to complete..."
+          for i in {1..20}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id ${{ steps.deploy-app.outputs.command-id }} \
+              --instance-id ${{ steps.get-instance.outputs.instance-id }} \
+              --region us-west-2 \
+              --query 'Status' \
+              --output text)
+            
+            if [ "$STATUS" = "Success" ]; then
+              echo "✅ Deployment completed successfully!"
+              break
+            elif [ "$STATUS" = "Failed" ]; then
+              echo "❌ Deployment failed!"
+              aws ssm get-command-invocation \
+                --command-id ${{ steps.deploy-app.outputs.command-id }} \
+                --instance-id ${{ steps.get-instance.outputs.instance-id }} \
+                --region us-west-2 \
+                --query 'StandardErrorContent' \
+                --output text
+              exit 1
+            fi
+            
+            echo "Status: $STATUS, waiting... ($i/20)"
+            sleep 30
+          done
+
+      - name: Verify deployment
+        run: |
+          PUBLIC_IP="${{ steps.get-instance.outputs.public-ip }}"
+          echo "🌐 Application URL: http://$PUBLIC_IP"
+          echo "🔍 Checking health..."
+          
+          # Wait a bit more for services to fully start
+          sleep 30
+          
+          # Check if the application is responding
+          for i in {1..10}; do
+            if curl -f -s "http://$PUBLIC_IP" > /dev/null; then
+              echo "✅ Application is healthy!"
+              echo "🌐 Access your RPG Platform at: http://$PUBLIC_IP"
+              break
+            fi
+            echo "Waiting for application... ($i/10)"
+            sleep 15
+          done
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          PUBLIC_IP="${{ steps.get-instance.outputs.public-ip }}"
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ **Status**: Deployment successful!" >> $GITHUB_STEP_SUMMARY
+            echo "🌐 **Application URL**: http://$PUBLIC_IP" >> $GITHUB_STEP_SUMMARY
+            echo "📊 **Health Check**: http://$PUBLIC_IP/health" >> $GITHUB_STEP_SUMMARY
+            echo "🐳 **Docker Images**: Built and deployed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Status**: Deployment failed!" >> $GITHUB_STEP_SUMMARY
+            echo "🔍 **Logs**: Check the job output for details" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Built Images**:" >> $GITHUB_STEP_SUMMARY
+          echo "- API: \`${{ needs.build-and-push.outputs.api-image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Web: \`${{ needs.build-and-push.outputs.web-image }}\`" >> $GITHUB_STEP_SUMMARY

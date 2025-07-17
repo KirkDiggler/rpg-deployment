@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rpg-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"  # Expose for local development
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: redis-server --appendonly yes
+
+  rpg-api:
+    build:
+      context: ../rpg-api
+      dockerfile: Dockerfile
+    container_name: rpg-api
+    restart: unless-stopped
+    expose:
+      - "50051"
+    environment:
+      - PORT=50051
+      - LOG_LEVEL=info
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "nc -z localhost 50051 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rpg-web:
+    build:
+      context: ../rpg-dnd5e-web
+      dockerfile: Dockerfile
+    container_name: rpg-web
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - rpg-api
+    networks:
+      - rpg-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: rpg-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - rpg-api
+      - rpg-web
+    networks:
+      - rpg-network
+
+networks:
+  rpg-network:
+    driver: bridge
+
+volumes:
+  redis_dev_data:
+  certs:
