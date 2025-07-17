@@ -252,6 +252,55 @@ Resources:
           mkdir -p /opt/rpg-deployment
           chown ubuntu:ubuntu /opt/rpg-deployment
           
+          # Create directory structure and clone repositories
+          echo "=== Creating directory structure ==="
+          cd /opt
+          mkdir -p rpg-apps
+          chown ubuntu:ubuntu rpg-apps
+          cd rpg-apps
+          
+          echo "=== Cloning rpg-deployment repository ==="
+          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-deployment.git
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to clone rpg-deployment repository"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+            exit 1
+          fi
+          
+          echo "=== Cloning rpg-api repository ==="
+          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-api.git
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to clone rpg-api repository"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+            exit 1
+          fi
+          
+          echo "=== Cloning rpg-dnd5e-web repository ==="
+          sudo -u ubuntu git clone https://github.com/KirkDiggler/rpg-dnd5e-web.git
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to clone rpg-dnd5e-web repository"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+            exit 1
+          fi
+          
+          # Start the application
+          echo "=== Starting application with docker compose ==="
+          cd /opt/rpg-apps/rpg-deployment
+          sudo -u ubuntu docker compose up -d
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to start application"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+            exit 1
+          fi
+          
+          # Wait for services to be healthy
+          echo "=== Waiting for services to be healthy ==="
+          sleep 30
+          
+          # Check if services are running
+          echo "=== Checking service status ==="
+          sudo -u ubuntu docker compose ps
+          
           # Skip CloudWatch agent for now - we can add it later
           echo "=== Skipping CloudWatch agent installation ==="
           
