@@ -19,9 +19,7 @@ services:
     command: redis-server --appendonly yes
 
   rpg-api:
-    build:
-      context: ../rpg-api
-      dockerfile: Dockerfile
+    image: ghcr.io/kirkdiggler/rpg-api:latest
     container_name: rpg-api
     restart: unless-stopped
     expose:
@@ -55,9 +53,7 @@ services:
     command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info
 
   rpg-web:
-    build:
-      context: ../rpg-dnd5e-web
-      dockerfile: Dockerfile
+    image: ghcr.io/kirkdiggler/rpg-dnd5e-web:latest
     container_name: rpg-web
     restart: unless-stopped
     expose:
