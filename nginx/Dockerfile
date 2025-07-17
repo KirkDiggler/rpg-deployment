@@ -7,12 +7,12 @@ RUN apk add --no-cache certbot certbot-nginx openssl bash
 RUN mkdir -p /var/www/certbot
 
 # Copy nginx configurations
-COPY nginx-initial.conf /etc/nginx/nginx-initial.conf
-COPY nginx-ssl.conf /etc/nginx/nginx-ssl.conf
+COPY nginx/nginx-initial.conf /etc/nginx/nginx-initial.conf
+COPY nginx/nginx-ssl.conf /etc/nginx/nginx-ssl.conf
 
 # Copy scripts
-COPY ../scripts/init-letsencrypt.sh /usr/local/bin/init-letsencrypt.sh
-COPY ../scripts/renew-certificates.sh /usr/local/bin/renew-certificates.sh
+COPY scripts/init-letsencrypt.sh /usr/local/bin/init-letsencrypt.sh
+COPY scripts/renew-certificates.sh /usr/local/bin/renew-certificates.sh
 RUN chmod +x /usr/local/bin/init-letsencrypt.sh /usr/local/bin/renew-certificates.sh
 
 # Add cron job for certificate renewal (runs twice daily)
