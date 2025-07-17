@@ -201,6 +201,13 @@ Resources:
             echo "WARNING: apt update/upgrade timed out after 5 minutes, continuing anyway"
           fi
           
+          # Install CloudFormation helper scripts
+          echo "=== Installing CloudFormation helper scripts ==="
+          apt-get install -y python3-pip
+          pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+          mkdir -p /opt/aws/bin
+          ln -s /usr/local/bin/cfn-signal /opt/aws/bin/cfn-signal
+          
           # Install required packages
           echo "=== Installing required packages ==="
           apt-get install -y docker.io curl
