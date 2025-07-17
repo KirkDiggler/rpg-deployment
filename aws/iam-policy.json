@@ -92,7 +92,11 @@
         "cloudformation:GetTemplate",
         "cloudformation:ValidateTemplate",
         "cloudformation:ListStacks",
-        "cloudformation:ListStackResources"
+        "cloudformation:ListStackResources",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet"
       ],
       "Resource": [
         "arn:aws:cloudformation:us-west-2:*:stack/rpg-gaming-platform/*",

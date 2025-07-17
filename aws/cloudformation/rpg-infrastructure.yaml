@@ -167,27 +167,65 @@ Resources:
             Encrypted: true
       UserData:
         Fn::Base64: !Sub |
-          #!/bin/bash
+          #!/bin/bash -x
+          # Enable debugging and logging
+          exec > >(tee /var/log/user-data.log)
+          exec 2>&1
+          echo "=== Starting user data script at $(date) ==="
+          
+          # Update system
+          echo "=== Updating system packages ==="
           yum update -y
-          yum install -y docker git
+          
+          # Install Docker
+          echo "=== Installing Docker ==="
+          yum install -y docker
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to install Docker"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+            exit 1
+          fi
+          
+          # Start and enable Docker
+          echo "=== Starting Docker service ==="
           systemctl start docker
           systemctl enable docker
+          
+          # Add ec2-user to docker group
+          echo "=== Adding ec2-user to docker group ==="
           usermod -aG docker ec2-user
           
+          # Test Docker
+          echo "=== Testing Docker installation ==="
+          docker --version
+          docker run hello-world
+          
           # Install Docker Compose
-          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          echo "=== Installing Docker Compose ==="
+          COMPOSE_VERSION="v2.24.1"
+          curl -L "https://github.com/docker/compose/releases/download/${!COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to download Docker Compose"
+            /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+            exit 1
+          fi
           chmod +x /usr/local/bin/docker-compose
           
+          # Test Docker Compose
+          echo "=== Testing Docker Compose ==="
+          /usr/local/bin/docker-compose --version
+          
           # Create deployment directory
+          echo "=== Creating deployment directory ==="
           mkdir -p /opt/rpg-deployment
           chown ec2-user:ec2-user /opt/rpg-deployment
           
-          # Install CloudWatch agent (for monitoring)
-          wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
-          rpm -U ./amazon-cloudwatch-agent.rpm
+          # Skip CloudWatch agent for now - we can add it later
+          echo "=== Skipping CloudWatch agent installation ==="
           
-          # Signal completion
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
+          # Signal success
+          echo "=== User data script completed successfully at $(date) ==="
+          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource RPGServer --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: !Sub "${Environment}-rpg-server"
