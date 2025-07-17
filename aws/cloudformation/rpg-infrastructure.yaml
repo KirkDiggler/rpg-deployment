@@ -173,9 +173,32 @@ Resources:
           exec 2>&1
           echo "=== Starting user data script at $(date) ==="
           
-          # Update system
-          echo "=== Updating system packages ==="
-          yum update -y
+          # Function to signal we're still alive
+          heartbeat() {
+            while true; do
+              echo "=== Heartbeat at $(date) - script still running ==="
+              sleep 60
+            done
+          }
+          
+          # Start heartbeat in background
+          heartbeat &
+          HEARTBEAT_PID=$!
+          
+          # Ensure we kill heartbeat on exit
+          trap "kill $HEARTBEAT_PID 2>/dev/null" EXIT
+          
+          # Write instance info
+          echo "Instance ID: $(ec2-metadata --instance-id | cut -d' ' -f2)"
+          echo "AMI ID: $(ec2-metadata --ami-id | cut -d' ' -f2)"
+          echo "Instance Type: $(ec2-metadata --instance-type | cut -d' ' -f2)"
+          
+          # Update system with timeout
+          echo "=== Updating system packages (5 min timeout) ==="
+          timeout 300 yum update -y
+          if [ $? -eq 124 ]; then
+            echo "WARNING: yum update timed out after 5 minutes, continuing anyway"
+          fi
           
           # Install Docker
           echo "=== Installing Docker ==="
@@ -233,7 +256,7 @@ Resources:
           Value: !Ref Environment
     CreationPolicy:
       ResourceSignal:
-        Timeout: PT10M
+        Timeout: PT20M
 
   # Elastic IP
   RPGElasticIP:
