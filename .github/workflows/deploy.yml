@@ -6,14 +6,37 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      source:
+        description: 'Source repository that triggered this deployment'
+        required: false
+        default: 'manual'
+        type: string
+      sha:
+        description: 'Commit SHA that triggered this deployment'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     environment: production
 
     steps:
+      - name: Show deployment trigger info
+        run: |
+          echo "🚀 Starting deployment..."
+          echo "Triggered by: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Source: ${{ inputs.source }}"
+            echo "SHA: ${{ inputs.sha }}"
+          else
+            echo "Source: ${{ github.repository }}"
+            echo "SHA: ${{ github.sha }}"
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -173,6 +196,17 @@ jobs:
           PUBLIC_IP="${{ steps.get-instance.outputs.public-ip }}"
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Show what triggered this deployment
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "🎯 **Triggered by**: ${{ inputs.source }}" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Source SHA**: ${{ inputs.sha }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🎯 **Triggered by**: Direct push to ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Source SHA**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ **Status**: Deployment successful!" >> $GITHUB_STEP_SUMMARY
             echo "🌐 **Application URL**: http://$PUBLIC_IP" >> $GITHUB_STEP_SUMMARY
