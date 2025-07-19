@@ -27,11 +27,24 @@ Complete deployment pipeline for the RPG gaming platform with modular architectu
 
 Set these secrets in your GitHub repository settings:
 
+**AWS Secrets:**
 ```bash
 AWS_ACCESS_KEY_ID=your-aws-access-key
 AWS_SECRET_ACCESS_KEY=your-aws-secret-key
 AWS_KEY_PAIR_NAME=your-ec2-key-pair-name
+```
+
+**Discord OAuth Secrets:**
+```bash
+VITE_DISCORD_CLIENT_ID=your-discord-client-id   # Used for both frontend and backend
+DISCORD_CLIENT_SECRET=your-discord-client-secret # From Discord Developer Portal (OAuth2 section)
+```
+
+**Optional:**
+```bash
 GH_TOKEN=github-token-for-private-repos  # If using private repos
+DOMAIN_NAME=your-domain.com              # For SSL certificates
+SSL_EMAIL=your-email@example.com         # For Let's Encrypt
 ```
 
 ### 2. Deploy via GitHub Actions
