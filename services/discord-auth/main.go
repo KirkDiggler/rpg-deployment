@@ -31,6 +31,13 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+func maskSecret(s string) string {
+	if len(s) <= 8 {
+		return "***"
+	}
+	return s[:4] + "..." + s[len(s)-4:]
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -47,11 +54,25 @@ func main() {
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
 
 func handleTokenExchange(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	
+	log.Printf("Received %s request to /api/discord/token from %s", r.Method, r.RemoteAddr)
+	
+	// Handle preflight requests
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -72,8 +93,12 @@ func handleTokenExchange(w http.ResponseWriter, r *http.Request) {
 	clientSecret := os.Getenv("DISCORD_CLIENT_SECRET")
 	redirectURI := os.Getenv("DISCORD_REDIRECT_URI")
 
+	log.Printf("Environment check - ClientID: %s, RedirectURI: %s", 
+		maskSecret(clientID), redirectURI)
+
 	if clientID == "" || clientSecret == "" {
-		log.Printf("Missing required environment variables")
+		log.Printf("Missing required environment variables - ClientID present: %v, ClientSecret present: %v",
+			clientID != "", clientSecret != "")
 		respondWithError(w, http.StatusInternalServerError, "Server configuration error")
 		return
 	}
@@ -140,6 +165,7 @@ func respondWithError(w http.ResponseWriter, code int, message string) {
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(payload)
 }
