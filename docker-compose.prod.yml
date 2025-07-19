@@ -19,7 +19,7 @@ services:
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
 
   rpg-api:
-    image: ghcr.io/${GITHUB_REPOSITORY}/rpg-api:latest
+    image: ghcr.io/kirkdiggler/rpg-api:latest
     container_name: rpg-api
     restart: unless-stopped
     expose:
@@ -54,7 +54,7 @@ services:
     command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info
 
   rpg-web:
-    image: ghcr.io/${GITHUB_REPOSITORY}/rpg-web:latest
+    image: ghcr.io/kirkdiggler/rpg-dnd5e-web:latest
     container_name: rpg-web
     restart: unless-stopped
     expose:
