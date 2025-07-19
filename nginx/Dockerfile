@@ -22,6 +22,9 @@ RUN echo "0 2,14 * * * /usr/local/bin/renew-certificates.sh >> /var/log/certbot-
 RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
     echo 'set -e' >> /docker-entrypoint.sh && \
     echo '' >> /docker-entrypoint.sh && \
+    echo '# Disable nginx template processing' >> /docker-entrypoint.sh && \
+    echo 'export NGINX_ENTRYPOINT_QUIET_LOGS=1' >> /docker-entrypoint.sh && \
+    echo '' >> /docker-entrypoint.sh && \
     echo '# Start crond in background' >> /docker-entrypoint.sh && \
     echo 'crond' >> /docker-entrypoint.sh && \
     echo '' >> /docker-entrypoint.sh && \
