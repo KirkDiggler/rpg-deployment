@@ -35,10 +35,9 @@ if [ -d "$CERT_PATH" ]; then
         # Test nginx configuration
         nginx -t
         
-        # Reload nginx
-        nginx -s reload || nginx
-        
         echo "Nginx configured with SSL"
+        
+        # Don't start nginx here - the main entrypoint will handle it
         exit 0
     else
         echo "Certificates exist but are expired or invalid"
@@ -51,9 +50,9 @@ echo "Starting certificate generation process..."
 cp /etc/nginx/nginx-initial.conf /etc/nginx/nginx.conf
 
 # Substitute domain name in nginx config
-sed -i "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" /etc/nginx/nginx.conf
+sed "s/\${DOMAIN_NAME}/${DOMAIN_NAME}/g" /etc/nginx/nginx-initial.conf > /etc/nginx/nginx.conf
 
-# Start nginx with initial configuration
+# Start nginx temporarily for ACME challenge
 nginx
 
 # Wait for nginx to be ready
@@ -80,15 +79,15 @@ fi
 echo "Certificate obtained successfully"
 
 # Switch to SSL configuration
-cp /etc/nginx/nginx-ssl.conf /etc/nginx/nginx.conf
-
-# Substitute domain name in nginx config
-sed -i "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" /etc/nginx/nginx.conf
+sed "s/\${DOMAIN_NAME}/${DOMAIN_NAME}/g" /etc/nginx/nginx-ssl.conf > /etc/nginx/nginx.conf
 
 # Test nginx configuration
 nginx -t
 
-# Reload nginx with SSL configuration
-nginx -s reload
+# Stop the temporary nginx instance
+nginx -s stop
+
+# Wait for nginx to stop
+sleep 2
 
 echo "Nginx configured with SSL successfully"
