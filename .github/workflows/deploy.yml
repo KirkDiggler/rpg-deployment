@@ -121,6 +121,7 @@ jobs:
               "echo \"VITE_DISCORD_CLIENT_ID=${{ secrets.VITE_DISCORD_CLIENT_ID }}\" >> .env",
               "echo \"DISCORD_CLIENT_ID=${{ secrets.VITE_DISCORD_CLIENT_ID }}\" >> .env",
               "echo \"DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}\" >> .env",
+              "echo \"DISCORD_REDIRECT_URI=https://${{ secrets.DOMAIN_NAME }}\" >> .env",
               "echo \"Logging into GitHub Container Registry...\"",
               "echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin",
               "echo \"Pulling latest pre-built images...\"",
