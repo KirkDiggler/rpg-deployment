@@ -61,6 +61,7 @@ services:
       - "80"
     environment:
       - VITE_DISCORD_CLIENT_ID=${VITE_DISCORD_CLIENT_ID}
+      - VITE_API_BASE_URL=/api
     depends_on:
       - rpg-api
       - envoy
