@@ -29,6 +29,9 @@ if [ -d "$CERT_PATH" ]; then
         # Use SSL configuration
         cp /etc/nginx/nginx-ssl.conf /etc/nginx/nginx.conf
         
+        # Substitute domain name in nginx config
+        sed -i "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" /etc/nginx/nginx.conf
+        
         # Test nginx configuration
         nginx -t
         
