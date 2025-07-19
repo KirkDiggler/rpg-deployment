@@ -28,7 +28,7 @@ services:
       - PORT=50051
       - LOG_LEVEL=info
       - ENV=production
-      - REDIS_URL=redis://redis:6379
+      - REDIS_ADDR=redis:6379
     depends_on:
       - redis
     networks:

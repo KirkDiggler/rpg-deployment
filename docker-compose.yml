@@ -27,7 +27,7 @@ services:
     environment:
       - PORT=50051
       - LOG_LEVEL=info
-      - REDIS_URL=redis://redis:6379
+      - REDIS_ADDR=redis:6379
       - DND5E_API_URL=http://dnd-api:3000/api/2014/
     depends_on:
       - redis
