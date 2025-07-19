@@ -59,6 +59,8 @@ services:
     restart: unless-stopped
     expose:
       - "80"
+    environment:
+      - VITE_DISCORD_CLIENT_ID=${VITE_DISCORD_CLIENT_ID}
     depends_on:
       - rpg-api
       - envoy

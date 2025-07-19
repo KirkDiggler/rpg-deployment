@@ -25,6 +25,12 @@ static_resources:
                       domains: ["*"]
                       routes:
                         - match:
+                            prefix: "/dnd-api/"
+                          route:
+                            cluster: dnd_api_service
+                            timeout: 0s
+                            prefix_rewrite: "/api/"
+                        - match:
                             prefix: "/"
                           route:
                             cluster: grpc_service
@@ -64,3 +70,16 @@ static_resources:
                     socket_address:
                       address: rpg-api  # Docker service name
                       port_value: 50051
+    - name: dnd_api_service
+      type: logical_dns
+      connect_timeout: 0.25s
+      lb_policy: round_robin
+      load_assignment:
+        cluster_name: dnd_api_service
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: dnd-api  # Docker service name
+                      port_value: 3000

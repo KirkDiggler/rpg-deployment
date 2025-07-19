@@ -1,0 +1,8 @@
+version: '3.8'
+
+# Local development override - use with: docker-compose -f docker-compose.yml -f docker-compose.local.yml up
+
+services:
+  rpg-api:
+    environment:
+      - DND5E_API_URL=http://localhost:3002/api/  # Use local D&D API for development
