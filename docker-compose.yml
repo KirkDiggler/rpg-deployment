@@ -104,6 +104,27 @@ services:
       timeout: 10s
       retries: 3
 
+  discord-auth:
+    build:
+      context: ./services/discord-auth
+      dockerfile: Dockerfile
+    container_name: rpg-discord-auth
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      - PORT=8080
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-test_client_id}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-test_client_secret}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI}
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   nginx:
     image: nginx:alpine
     container_name: rpg-nginx
@@ -118,6 +139,7 @@ services:
       - rpg-api
       - rpg-web
       - envoy
+      - discord-auth
     networks:
       - rpg-network
 
