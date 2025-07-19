@@ -1,0 +1,44 @@
+# D&D 5e API services
+version: '3.8'
+
+services:
+  dnd-database:
+    image: ghcr.io/5e-bits/5e-database:latest
+    container_name: dnd-database
+    restart: unless-stopped
+    expose:
+      - "27017"
+    networks:
+      - rpg-network
+    volumes:
+      - dnd_db_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dnd-api:
+    image: ghcr.io/5e-bits/5e-srd-api:4.2.1
+    container_name: dnd-api
+    restart: unless-stopped
+    ports:
+      - "3002:3000"  # Expose on 3002 for local development access
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://dnd-database:27017/5e-database
+      - REDIS_URL=redis://redis:6379
+      - RATE_LIMIT_WINDOW_MS=1000
+      - RATE_LIMIT_MAX=1000
+    depends_on:
+      - dnd-database
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  dnd_db_data:

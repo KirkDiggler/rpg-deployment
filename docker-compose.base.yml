@@ -1,0 +1,27 @@
+# Base services - Redis and core infrastructure
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rpg-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # Expose on 6380 for local development (6379 is in use)
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: redis-server --appendonly yes
+
+networks:
+  rpg-network:
+    driver: bridge
+
+volumes:
+  redis_dev_data:

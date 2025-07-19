@@ -1,0 +1,39 @@
+# API services
+version: '3.8'
+
+services:
+  rpg-api:
+    image: ghcr.io/kirkdiggler/rpg-api:latest
+    container_name: rpg-api
+    restart: unless-stopped
+    expose:
+      - "50051"
+    environment:
+      - PORT=50051
+      - LOG_LEVEL=info
+      - REDIS_URL=redis://redis:6379
+      - DND5E_API_URL=http://dnd-api:3000/api/
+    depends_on:
+      - redis
+      - dnd-api
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "nc -z localhost 50051 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: rpg-envoy
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - rpg-api
+    networks:
+      - rpg-network
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info

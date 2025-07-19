@@ -119,6 +119,7 @@ jobs:
               "echo \"GITHUB_REPOSITORY=${{ github.repository }}\" > .env",
               "echo \"DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}\" >> .env",
               "echo \"EMAIL=${{ secrets.SSL_EMAIL }}\" >> .env",
+              "echo \"VITE_DISCORD_CLIENT_ID=${{ secrets.VITE_DISCORD_CLIENT_ID }}\" >> .env",
               "echo \"Logging into GitHub Container Registry...\"",
               "echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin",
               "echo \"Pulling latest pre-built images...\"",
