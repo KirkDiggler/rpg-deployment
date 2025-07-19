@@ -48,7 +48,7 @@ echo "Starting certificate generation process..."
 cp /etc/nginx/nginx-initial.conf /etc/nginx/nginx.conf
 
 # Substitute domain name in nginx config
-sed -i "s/\${DOMAIN_NAME}/$DOMAIN_NAME/g" /etc/nginx/nginx.conf
+sed -i "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" /etc/nginx/nginx.conf
 
 # Start nginx with initial configuration
 nginx
@@ -80,7 +80,7 @@ echo "Certificate obtained successfully"
 cp /etc/nginx/nginx-ssl.conf /etc/nginx/nginx.conf
 
 # Substitute domain name in nginx config
-sed -i "s/\${DOMAIN_NAME}/$DOMAIN_NAME/g" /etc/nginx/nginx.conf
+sed -i "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" /etc/nginx/nginx.conf
 
 # Test nginx configuration
 nginx -t
