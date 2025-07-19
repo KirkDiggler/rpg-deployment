@@ -44,10 +44,13 @@ func main() {
 		port = "8080"
 	}
 
+	// Handle both paths - Discord proxy strips /api prefix
 	http.HandleFunc("/api/discord/token", handleTokenExchange)
+	http.HandleFunc("/discord/token", handleTokenExchange)
 	http.HandleFunc("/health", handleHealth)
 
 	log.Printf("Discord auth service starting on port %s", port)
+	log.Printf("Handling token exchange at both /api/discord/token and /discord/token")
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
 	}
@@ -65,7 +68,7 @@ func handleTokenExchange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	
-	log.Printf("Received %s request to /api/discord/token from %s", r.Method, r.RemoteAddr)
+	log.Printf("Received %s request to %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 	
 	// Handle preflight requests
 	if r.Method == http.MethodOptions {

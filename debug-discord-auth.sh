@@ -29,9 +29,13 @@ docker exec rpg-discord-auth printenv | grep DISCORD || echo "No Discord env var
 
 # Test the actual endpoint
 echo -e "\n7. Testing token endpoint with curl:"
-docker exec rpg-nginx curl -s -X POST http://discord-auth:8080/api/discord/token \
+response=$(docker exec rpg-nginx curl -s -w "\nHTTP_CODE:%{http_code}" -X POST http://discord-auth:8080/api/discord/token \
   -H "Content-Type: application/json" \
-  -d '{"code":"test"}' | jq . || echo "Failed to test token endpoint"
+  -d '{"code":"test"}')
+http_code=$(echo "$response" | grep "HTTP_CODE:" | cut -d: -f2)
+body=$(echo "$response" | sed '/HTTP_CODE:/d')
+echo "Response code: $http_code"
+echo "Response body: $body"
 
 # Check if nginx config has the right upstream
 echo -e "\n8. Checking nginx configuration:"
