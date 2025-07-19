@@ -27,6 +27,9 @@ services:
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://dnd-database:27017/5e-database
+      - REDIS_URL=redis://redis:6379
+      - RATE_LIMIT_WINDOW_MS=1000
+      - RATE_LIMIT_MAX=1000
     depends_on:
       - dnd-database
     networks:
