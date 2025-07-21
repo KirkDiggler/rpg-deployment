@@ -60,14 +60,13 @@ sleep 5
 
 echo "Requesting certificate from Let's Encrypt..."
 
-# Request certificate
+# Request certificate (without force-renewal to avoid rate limits)
 certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email "$EMAIL" \
     --agree-tos \
     --no-eff-email \
-    --force-renewal \
     -d "$DOMAIN_NAME"
 
 # Check if certificate was obtained successfully
