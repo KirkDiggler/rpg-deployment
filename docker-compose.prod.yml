@@ -104,6 +104,7 @@ services:
     environment:
       - DOMAIN_NAME=${DOMAIN_NAME}
       - EMAIL=${EMAIL}
+      - SSL_MODE=${SSL_MODE:-ssl}
     depends_on:
       - rpg-api
       - rpg-web

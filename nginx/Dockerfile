@@ -9,6 +9,7 @@ RUN mkdir -p /var/www/certbot
 # Copy nginx configurations
 COPY nginx/nginx-initial.conf /etc/nginx/nginx-initial.conf
 COPY nginx/nginx-ssl.conf /etc/nginx/nginx-ssl.conf
+COPY nginx/nginx-http.conf /etc/nginx/nginx-http.conf
 
 # Copy scripts
 COPY scripts/init-letsencrypt.sh /usr/local/bin/init-letsencrypt.sh
