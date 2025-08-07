@@ -44,13 +44,13 @@ func main() {
 		port = "8080"
 	}
 
-	// Handle both paths - Discord proxy strips /api prefix
-	http.HandleFunc("/api/discord/token", handleTokenExchange)
-	http.HandleFunc("/discord/token", handleTokenExchange)
+	// Handle auth paths - nginx proxies /auth/ to this service
+	http.HandleFunc("/auth/discord/token", handleTokenExchange)
+	http.HandleFunc("/discord/token", handleTokenExchange)  // Keep for backward compatibility
 	http.HandleFunc("/health", handleHealth)
 
 	log.Printf("Discord auth service starting on port %s", port)
-	log.Printf("Handling token exchange at both /api/discord/token and /discord/token")
+	log.Printf("Handling token exchange at /auth/discord/token and /discord/token")
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
 	}
