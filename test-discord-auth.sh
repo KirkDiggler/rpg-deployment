@@ -13,7 +13,7 @@ curl -s http://localhost:8080/health && echo " ✅ Direct health check passed" |
 
 # Test through nginx
 echo -e "\n3. Testing Discord Auth through nginx..."
-response=$(curl -s -w "\nHTTP_CODE:%{http_code}" http://localhost/api/discord/token -X POST -H "Content-Type: application/json" -d '{"code":"test"}')
+response=$(curl -s -w "\nHTTP_CODE:%{http_code}" http://localhost/auth/discord/token -X POST -H "Content-Type: application/json" -d '{"code":"test"}')
 http_code=$(echo "$response" | grep "HTTP_CODE:" | cut -d: -f2)
 body=$(echo "$response" | sed '/HTTP_CODE:/d')
 
