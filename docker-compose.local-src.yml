@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rpg-redis-dev
+    ports:
+      - "6380:6379"
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  dnd-database:
+    image: ghcr.io/5e-bits/5e-database:latest
+    container_name: dnd-database
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  dnd-api:
+    image: ghcr.io/5e-bits/5e-srd-api:4.2.1
+    container_name: dnd-api
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://dnd-database:27017/5e-database
+      - REDIS_URL=redis://redis:6379
+      - RATE_LIMIT_WINDOW_MS=1000
+      - RATE_LIMIT_MAX=1000
+    depends_on:
+      - dnd-database
+      - redis
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Build rpg-api from local source
+  rpg-api:
+    build:
+      context: ../rpg-api
+      dockerfile: Dockerfile
+    container_name: rpg-api
+    expose:
+      - "50051"
+    environment:
+      - PORT=50051
+      - LOG_LEVEL=info
+      - REDIS_ADDR=redis:6379
+      - DND5E_API_URL=http://dnd-api:3000/api/2014/
+    depends_on:
+      - redis
+      - dnd-api
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "nc -z localhost 50051 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      # Mount source code for hot reload if supported
+      - ../rpg-api:/app:ro
+
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: rpg-envoy
+    expose:
+      - "8080"
+      - "9901"
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - rpg-api
+    networks:
+      - rpg-network
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info
+
+  # Build rpg-web from local source
+  rpg-web:
+    build:
+      context: ../rpg-dnd5e-web
+      dockerfile: Dockerfile
+    container_name: rpg-web
+    expose:
+      - "3000"
+    environment:
+      - VITE_API_URL=http://localhost
+      - VITE_GRPC_WEB_URL=http://localhost
+    depends_on:
+      - rpg-api
+      - envoy
+    networks:
+      - rpg-network
+    volumes:
+      # Mount source for hot reload with Vite
+      - ../rpg-dnd5e-web:/app:ro
+      - /app/node_modules  # Exclude node_modules
+
+  nginx-local:
+    image: nginx:alpine
+    container_name: rpg-nginx-local
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx-local-with-web.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - envoy
+      - rpg-web
+    networks:
+      - rpg-network
+
+networks:
+  rpg-network:
+    driver: bridge
