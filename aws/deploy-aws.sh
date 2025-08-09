@@ -130,6 +130,11 @@ setup_server() {
         chmod +x aws/ec2-setup.sh
         ./aws/ec2-setup.sh
         
+        # Run Docker cleanup before starting services
+        echo "Running Docker cleanup to free up space..."
+        chmod +x scripts/docker-cleanup.sh
+        ./scripts/docker-cleanup.sh
+        
         # Start the application
         docker-compose up -d
         

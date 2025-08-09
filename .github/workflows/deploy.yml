@@ -125,14 +125,11 @@ jobs:
               "echo \"SSL_MODE=http\" >> .env",
               "echo \"Logging into GitHub Container Registry...\"",
               "echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin",
+              "echo \"Running comprehensive Docker cleanup to free up space...\"",
+              "chmod +x scripts/docker-cleanup.sh",
+              "./scripts/docker-cleanup.sh",
               "echo \"Cleaning up existing deployment...\"",
               "docker compose -f docker-compose.prod.yml down -v --remove-orphans || true",
-              "echo \"Removing any stopped containers...\"",
-              "docker container prune -f || true",
-              "echo \"Removing any dangling rpg containers...\"",
-              "docker ps -a --filter \"name=rpg-\" --filter \"status=exited\" -q | xargs -r docker rm || true",
-              "echo \"Cleaning up old images...\"",
-              "docker image prune -f",
               "echo \"Pulling latest pre-built images...\"",
               "docker compose -f docker-compose.prod.yml pull",
               "echo \"Starting new containers...\"",
@@ -159,7 +156,11 @@ jobs:
               "done",
               "echo \"Final container status:\"",
               "docker compose -f docker-compose.prod.yml ps",
-              "echo \"Deployment completed at $(date)\""
+              "echo \"Deployment completed at $(date)\"",
+              "echo \"Running post-deployment cleanup to free up space...\"",
+              "chmod +x scripts/docker-cleanup.sh",
+              "./scripts/docker-cleanup.sh",
+              "echo \"Post-deployment cleanup completed!\""
             ]' \
             --targets "Key=InstanceIds,Values=${{ steps.get-instance.outputs.instance-id }}" \
             --comment "Deploy RPG Platform from GitHub Actions" \

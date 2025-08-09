@@ -25,6 +25,14 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Run Docker cleanup before starting services
+echo "Running Docker cleanup to free up space..."
+if [ -f scripts/docker-cleanup.sh ]; then
+    bash scripts/docker-cleanup.sh
+else
+    echo "Warning: docker-cleanup.sh not found, skipping cleanup"
+fi
+
 # Start all services
 echo "Starting services with docker-compose..."
 docker compose -f docker-compose.prod.yml up -d
@@ -40,6 +48,14 @@ for i in {1..60}; do
     if [ "$healthy_count" -ge 5 ]; then
         echo "✅ Core services are healthy!"
         docker ps --filter "name=rpg-" --format "table {{.Names}}\t{{.Status}}"
+        
+        # Run post-startup cleanup
+        echo "Running post-startup cleanup to free up space..."
+        if [ -f scripts/docker-cleanup.sh ]; then
+            bash scripts/docker-cleanup.sh
+            echo "✅ Post-startup cleanup completed!"
+        fi
+        
         exit 0
     fi
     
