@@ -1,0 +1,93 @@
+# Local prod-parity stack (rpg-deployment#56).
+#
+# Runs the EXACT published production images -- ghcr.io/kirkdiggler/rpg-api:latest
+# and ghcr.io/kirkdiggler/rpg-dnd5e-web:latest -- behind the same envoy/nginx
+# wiring used elsewhere in this repo, so "what does prod actually run/serve?"
+# can be answered locally instead of guessing from `npm run dev` + `go run`.
+#
+# Usage: make local-prod / make local-prod-down (see Makefile).
+name: rpg-local-prod
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rpg-redis-local-prod
+    restart: unless-stopped
+    expose:
+      - "6379"
+    networks:
+      - rpg-local-prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  rpg-api:
+    image: ghcr.io/kirkdiggler/rpg-api:latest
+    container_name: rpg-api-local-prod
+    restart: unless-stopped
+    expose:
+      - "50051"
+    environment:
+      # Published prod image, dev-auth turned on since there's no real Discord
+      # session locally -- see LOCAL_DEV.md for the "Dev <player_id>" scheme
+      # this unlocks and how the web UI is coaxed into using it.
+      - PORT=50051
+      - LOG_LEVEL=info
+      - AUTH_DEV_MODE=true
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - rpg-local-prod
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "nc -z localhost 50051 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: rpg-envoy-local-prod
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      rpg-api:
+        condition: service_healthy
+    networks:
+      - rpg-local-prod
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info
+
+  rpg-web:
+    image: ghcr.io/kirkdiggler/rpg-dnd5e-web:latest
+    container_name: rpg-web-local-prod
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - rpg-api
+    networks:
+      - rpg-local-prod
+
+  nginx-local:
+    image: nginx:alpine
+    container_name: rpg-nginx-local-prod
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx/nginx-local-prod.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - envoy
+      - rpg-web
+    networks:
+      - rpg-local-prod
+
+networks:
+  rpg-local-prod:
+    driver: bridge
