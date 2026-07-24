@@ -2,6 +2,74 @@
 
 This guide explains how to run the entire RPG platform locally for development.
 
+## Local Prod-Parity Stack (rpg-deployment#56)
+
+One command to run the *exact published production images* locally --
+`ghcr.io/kirkdiggler/rpg-api:latest` and `ghcr.io/kirkdiggler/rpg-dnd5e-web:latest`,
+unmodified -- for answering "what does prod actually run/serve?" questions
+(deployed-vs-local divergence in lighting, assets, toolkit version timing,
+etc.) without waiting on a real deploy.
+
+```bash
+make local-prod       # pulls both :latest images, brings up the stack
+make local-prod-logs  # follow logs
+make local-prod-down  # tear down
+```
+
+Up at **http://localhost:8090**. Wires together: `redis` -> `rpg-api`
+(`AUTH_DEV_MODE=true`, no Discord secrets needed) -> `envoy` (gRPC-Web
+translation, reusing `envoy/envoy.yaml`) -> `nginx` (single entry point,
+`nginx/nginx-local-prod.conf`) -> `rpg-web`. No `.env` required. Redis has no
+volume, so `local-prod-down` + `local-prod` gives you a clean slate.
+
+`nginx-local-prod.conf` is `nginx-local-with-web.conf` minus the `/dnd-api/`
+proxy_pass -- that upstream isn't part of this stack and `DND5E_API_URL` is
+unused by rpg-api's Go code -- and minus nginx's own CORS `add_header` lines
+on the gRPC-Web route, which stacked a second `Access-Control-Allow-Origin`
+on top of the one envoy's own `http.cors` filter already sets, producing an
+invalid multi-value header the moment a caller isn't same-origin (harmless
+normally since real prod traffic is same-origin, but it broke this stack's
+own smoke test below).
+
+### Known limitations of testing the published web image this way
+
+Two characteristics of the published `rpg-dnd5e-web:latest` image mean
+**opening http://localhost:8090 in an ordinary browser will not, by itself,
+exercise this local `rpg-api`** for gRPC calls -- both discovered while
+building this stack, and both baked into the image at CI build time, not
+fixable via env vars or compose config:
+
+1. **The `?playerId=` dev-auth override is compiled out.** `vite build`
+   (what CI runs) bakes `import.meta.env.MODE` to the literal string
+   `"production"`. `src/App.tsx`'s dev-auth override and `src/api/client.ts`'s
+   interceptor branch that attaches `Authorization: Dev <id>` are both gated
+   on `import.meta.env.MODE === 'development'`, so in the published bundle
+   that whole path is dead code -- every gRPC-Web call goes out with no
+   Authorization header at all, which `AUTH_DEV_MODE=true` rpg-api correctly
+   rejects as Unauthenticated.
+2. **`VITE_API_HOST` is baked to the real production domain.** CI
+   (`rpg-dnd5e-web/.github/workflows/docker.yml`) passes `secrets.VITE_API_HOST`
+   as a build arg, which resolves to `https://rpg-toolkit.app`. The bundle
+   therefore calls the *live* production backend directly, not whatever's
+   running next to it -- this is true for `docker-compose.local-dev.yml` too,
+   since it uses the same `:latest` web image.
+
+This stack is still fully correct and useful as-is for verifying image
+provenance (pull it, inspect labels/created date, check the asset tree),
+driving the real `rpg-api:latest` binary directly (`grpcurl`/`curl` with a
+manual `Authorization: Dev <player_id>` header), and confirming the
+envoy/nginx wiring itself works. Getting the *published web bundle* to
+render against this local backend for a full click-through (done for
+rpg-deployment#56's own smoke test, see PR evidence) additionally requires
+intercepting the bundle's `https://rpg-toolkit.app` calls at the network
+layer and redirecting them here -- a Playwright `route.continue()` with a
+local self-signed TLS terminator in front of the stack (needed because
+`route.continue()` requires the override URL to keep the same scheme, and
+because a naive buffering proxy breaks the app's server-streaming RPCs like
+`StreamLobby`/`StreamEncounter`). That workaround lives in the PR's evidence,
+not in this repo, since it's test tooling rather than something the stack
+itself needs to ship.
+
 ## Quick Start
 
 ### Using Pre-built Images (Fastest)
