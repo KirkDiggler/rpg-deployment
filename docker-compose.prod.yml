@@ -29,6 +29,14 @@ services:
       - LOG_LEVEL=info
       - ENV=production
       - REDIS_ADDR=redis:6379
+      # Default dungeon becomes the Kirk-authored reference-tomb content
+      # (rpg-api#709/#716) instead of the legacy hardcoded crypt -- a no-op
+      # until an rpg-api image embedding reference-tomb.yaml is actually
+      # running (validated at orchestrator construction: an rpg-api image
+      # that doesn't recognize this key fails startup loudly, so this can
+      # only ever be live alongside a compatible image). Instant rollback:
+      # remove this line and redeploy.
+      - RPG_DUNGEON_KEY=reference-tomb
     depends_on:
       - redis
     networks:
