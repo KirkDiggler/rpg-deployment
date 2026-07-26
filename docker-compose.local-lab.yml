@@ -1,0 +1,68 @@
+# Overlay adding a SECOND, parallel api instance for local labs/experiments —
+# so one team's dungeon-key/content swap on the shared rpg-api container
+# stops colliding with another team's playtest (Kirk: "can we run our api
+# server separate from what the other teams are doing?").
+#
+# This file adds `rpg-api-lab` + `envoy-lab`; it never touches the existing
+# `rpg-api`/`envoy` services from docker-compose.local-dev.yml. The primary
+# stays the stable, shared baseline (reference-tomb) for everyone — labs and
+# experiments run here instead.
+#
+# Usage (from rpg-deployment/, alongside the normal primary-stack commands):
+#   docker build -t rpg-api:local ../rpg-api   # same image tag the primary
+#                                               # local-api-src overlay uses;
+#                                               # skip this if already built
+#   docker compose -f docker-compose.local-dev.yml \
+#                  -f docker-compose.local-lab.yml up -d rpg-api-lab envoy-lab
+#
+# Web-side hookup: rpg-dnd5e-web/vite.config.ts's /connect proxy already
+# reads VITE_API_HOST (falls back to localhost:8080) — no web-repo change
+# needed. Point a worktree's dev server at the lab instance with:
+#   VITE_API_HOST=http://localhost:8081 npm run dev
+#
+# Content/dungeon-key knobs (override per shell, none hardcoded to a machine):
+#   RPG_LAB_DUNGEON_KEY   - default dungeon key for the lab instance (default: wall-lab)
+#   RPG_CONTENT_HOST_DIR  - host dir mounted read-only at /content (default: ../dungeon-content)
+
+services:
+  rpg-api-lab:
+    image: rpg-api:local
+    pull_policy: never
+    container_name: rpg-api-lab
+    expose:
+      - "50051"  # Only expose internally to Docker network
+    environment:
+      - PORT=50051
+      - LOG_LEVEL=info
+      - REDIS_ADDR=redis:6379
+      - AUTH_DEV_MODE=true
+      - DND5E_API_URL=http://dnd-api:3000/api/2014/
+      - RPG_DUNGEON_KEY=${RPG_LAB_DUNGEON_KEY:-wall-lab}
+      - RPG_CONTENT_DIR=/content
+    volumes:
+      - ${RPG_CONTENT_HOST_DIR:-../dungeon-content}:/content:ro
+    depends_on:
+      - redis
+      - dnd-api
+    networks:
+      - rpg-network
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "nc -z localhost 50051 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  envoy-lab:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: rpg-envoy-lab
+    ports:
+      - "8081:8080"  # host-accessible for a worktree's VITE_API_HOST override
+    expose:
+      - "9901"  # Admin interface only internal
+    volumes:
+      - ./envoy/envoy-lab.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - rpg-api-lab
+    networks:
+      - rpg-network
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml -l info
