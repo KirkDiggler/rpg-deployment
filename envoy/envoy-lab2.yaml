@@ -1,6 +1,6 @@
-# Envoy config for the first parallel lab api instance (docker-compose.local-lab.yml).
+# Envoy config for the second parallel lab api instance (docker-compose.local-lab.yml).
 # Identical routing/CORS to envoy/envoy.yaml — the only difference is the
-# grpc_service cluster below, which targets rpg-api-lab instead of rpg-api.
+# grpc_service cluster below, which targets rpg-api-lab2 instead of rpg-api.
 # Keep the three envoy configs (envoy.yaml, envoy-lab.yaml, envoy-lab2.yaml) in
 # sync for anything other than each one's cluster address.
 
@@ -74,7 +74,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: rpg-api-lab  # Docker service name (lab instance)
+                      address: rpg-api-lab2  # Docker service name (second lab instance)
                       port_value: 50051
     - name: dnd_api_service
       type: logical_dns
