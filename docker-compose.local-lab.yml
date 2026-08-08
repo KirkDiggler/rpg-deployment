@@ -41,8 +41,9 @@
 # name/port/env-var-prefix (docker compose doesn't cleanly template full
 # service blocks via YAML anchors once `environment` needs a per-instance
 # key — anchors only help with blocks that are byte-identical across
-# instances, like the healthcheck below). Two hand-written instances isn't
-# worth that machinery yet.
+# instances, like the healthcheck below). Do not hand-add a toolkit-override
+# experiment here: scripts/toolkit-override-lab.sh creates a name-scoped API +
+# Envoy pair without claiming either fixed lab or recreating the primary stack.
 
 x-rpg-api-lab-healthcheck: &rpg-api-lab-healthcheck
   test: ["CMD", "/bin/sh", "-c", "nc -z localhost 50051 || exit 1"]

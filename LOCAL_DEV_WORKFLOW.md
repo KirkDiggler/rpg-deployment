@@ -1,10 +1,16 @@
 # Local Development Workflow
 
-This document describes how to run the RPG platform locally for development, matching the actual development workflow.
+This document describes the legacy individual-service and full-stack flows.
+For environment ownership and the supported isolated toolkit-override lab, read
+[LOCAL_DEV.md](LOCAL_DEV.md#which-local-environment-to-use) first. The primary
+`:8080` environment is the shared stable baseline; experiments must use an
+owned fixed lab or the isolated wrapper, never silently redeploy primary.
 
-## Option 1: Individual Services (Like Current Dev Workflow)
+## Option 1: Individual Services (coordinated primary work only)
 
-This matches how you currently develop locally:
+Use this only when you intentionally own the primary environment. It is not
+the safe path for an unpublished toolkit experiment; use the isolated wrapper
+in `LOCAL_DEV.md` for that.
 
 ### Prerequisites
 - Redis running on localhost:6379

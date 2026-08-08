@@ -70,6 +70,77 @@ because a naive buffering proxy breaks the app's server-streaming RPCs like
 not in this repo, since it's test tooling rather than something the stack
 itself needs to ship.
 
+## Which local environment to use
+
+Treat the primary stack (`rpg-api` / `rpg-envoy`, normally `:8080`) as the
+shared stable baseline. Do not redeploy it for an experiment while another
+session may be using it. The fixed `lab` and `lab2` services on `:8081` and
+`:8082` are shared playtest slots; use them only when you have coordinated
+ownership of that slot.
+
+For an unpublished `rpg-toolkit/encounter` change, use the isolated wrapper
+below instead of following `rpg-api`'s standalone override guide all the way
+to its primary-container redeploy example. The API guide remains authoritative
+for how its single-module override works; this wrapper invokes that helper and
+owns the safe Docker lifecycle around it.
+
+### Isolated toolkit-override lab
+
+Prerequisites:
+
+- Docker, `curl`, and Python 3 available locally;
+- fresh/dispensable API worktree with `Dockerfile.local-toolkit` and
+  `scripts/toolkit-local-override.sh`;
+- toolkit worktree containing the unpublished `encounter` change;
+- the normal local dependency stack already running, including the Docker
+  network `rpg-deployment_rpg-network`, Redis, and the D&D API;
+- unused Envoy and (optionally) Vite ports.
+
+From this repository:
+
+```bash
+scripts/toolkit-override-lab.sh up \
+  --api /path/to/rpg-api-worktree \
+  --toolkit /path/to/rpg-toolkit-worktree \
+  --name movement-893 \
+  --envoy-port 8183 \
+  --vite-port 5183
+```
+
+The command validates the worktrees, lab name, Docker network, container
+names, and ports before touching the API worktree. It then invokes the
+existing API override helper, verifies that only the approved `encounter`
+module is active, builds with `Dockerfile.local-toolkit`, and starts uniquely
+named API and Envoy containers. It prints the API URL, exact Vite command,
+and cleanup command. It never runs Compose and therefore never recreates the
+primary, `lab`, or `lab2` services.
+
+After each toolkit edit, cleanly cycle the lab and run `up` again so the
+existing override helper re-syncs the source:
+
+```bash
+scripts/toolkit-override-lab.sh down \
+  --api /path/to/rpg-api-worktree --name movement-893
+# then repeat the up command
+```
+
+`down` is idempotent. It removes only the two name-scoped containers, their
+lab-specific API image, and the generated Envoy config; invokes the API
+helper's `off` path; and fails loudly if `go.mod` or `local-toolkit/` residue
+remains. The lab shares the existing Redis dependency, so tests that create
+fixture keys still own deletion of those keys.
+
+Collision failures are intentional. Do not remove or rename someone else's
+container: choose another `--name` or port. `--network` can override the
+network name when the dependency stack was started under another Compose
+project.
+
+Run the wrapper regression suite with:
+
+```bash
+make test
+```
+
 ## Quick Start
 
 ### Using Pre-built Images (Fastest)
