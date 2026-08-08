@@ -37,6 +37,20 @@ services:
       # only ever be live alongside a compatible image). Instant rollback:
       # remove this line and redeploy.
       - RPG_DUNGEON_KEY=reference-tomb
+      # Dungeon Builder authoring surface (rpg-project#169: "remote phase =
+      # flip env gate in deployed compose"). NOTE: PR #67 put these on
+      # docker-compose.api.yml, which the production pipeline never reads --
+      # deploy.yml runs docker-compose.prod.yml, this file. The gate REQUIRES
+      # RPG_CONTENT_DIR at construction; PutDungeon writes through to files
+      # there, so it must be a bind mount that survives the pipeline's
+      # down/up cycle (untracked paths survive its `git reset --hard`).
+      # Instant rollback: remove these two lines + the volume and redeploy.
+      - RPG_AUTHORING_ENABLED=1
+      - RPG_CONTENT_DIR=/content
+    volumes:
+      # Authored dungeon YAMLs (write-through persistence). Empty dir is
+      # valid -- embedded dungeons always exist; authored ones accumulate.
+      - ./content:/content
     depends_on:
       - redis
     networks:
