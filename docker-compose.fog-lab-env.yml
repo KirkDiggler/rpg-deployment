@@ -1,0 +1,23 @@
+# Overlay for docker-compose.local-dev.yml + docker-compose.local-api-src.yml
+# that sets RPG_DUNGEON_KEY for the local rpg-api container, selecting the
+# fog-lab dungeon fixture (rpg-project#733 follow-up: a purpose-built dungeon
+# for fog-of-war playtesting) instead of the live default (the procedural
+# crypt generator).
+#
+# A separate file rather than editing docker-compose.local-api-src.yml or
+# docker-compose.local-dev.yml in place — both already carry local uncommitted
+# edits.
+#
+# Usage (after `docker build -t rpg-api:local <rpg-api worktree>`):
+#   docker compose -f docker-compose.local-dev.yml \
+#                  -f docker-compose.local-api-src.yml \
+#                  -f docker-compose.fog-lab-env.yml up -d rpg-api
+#
+# To go back to the live default dungeon, redeploy without this file:
+#   docker compose -f docker-compose.local-dev.yml \
+#                  -f docker-compose.local-api-src.yml up -d rpg-api
+
+services:
+  rpg-api:
+    environment:
+      - RPG_DUNGEON_KEY=fog-lab

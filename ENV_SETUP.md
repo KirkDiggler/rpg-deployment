@@ -48,6 +48,19 @@ LOG_LEVEL=info
 REDIS_URL=redis://redis:6379
 ```
 
+## Local Dev Overrides
+
+These only apply when running `docker-compose.local-dev.yml` (they're not read by
+the production compose files):
+
+```bash
+# Which rpg-api image tag the local dev stack pulls. Defaults to `dev` — the
+# integration branch image, published by rpg-api's docker workflow on every
+# push to `dev`. Override to pin a different tag, e.g. `latest` (what's in
+# production) or a specific commit sha.
+RPG_API_IMAGE_TAG=dev
+```
+
 ## Security Notes
 
 1. **Never commit `.env` to git** - It's in .gitignore for a reason

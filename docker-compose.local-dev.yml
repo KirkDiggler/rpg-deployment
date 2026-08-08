@@ -48,7 +48,10 @@ services:
       retries: 3
 
   rpg-api:
-    image: ghcr.io/kirkdiggler/rpg-api:latest
+    # `dev` is the integration branch image, published by rpg-api's docker
+    # workflow on every push to `dev`. Override RPG_API_IMAGE_TAG to pin a
+    # different tag (e.g. `latest` for what's in production, or a sha).
+    image: ghcr.io/kirkdiggler/rpg-api:${RPG_API_IMAGE_TAG:-dev}
     container_name: rpg-api
     expose:
       - "50051"  # Only expose internally to Docker network
@@ -56,6 +59,7 @@ services:
       - PORT=50051
       - LOG_LEVEL=info
       - REDIS_ADDR=redis:6379
+      - AUTH_DEV_MODE=true
       - DND5E_API_URL=http://dnd-api:3000/api/2014/
     depends_on:
       - redis
@@ -71,8 +75,9 @@ services:
   envoy:
     image: envoyproxy/envoy:v1.31-latest
     container_name: rpg-envoy
+    ports:
+      - "8080:8080"  # host-accessible for the web dev-server's /connect proxy
     expose:
-      - "8080"  # Only expose internally to Docker network
       - "9901"  # Admin interface only internal
     volumes:
       - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
