@@ -126,9 +126,12 @@ scripts/toolkit-override-lab.sh down \
 
 `down` is idempotent. It removes only the two name-scoped containers, their
 lab-specific API image, and the generated Envoy config; invokes the API
-helper's `off` path; and fails loudly if `go.mod` or `local-toolkit/` residue
-remains. The lab shares the existing Redis dependency, so tests that create
-fixture keys still own deletion of those keys.
+helper's `off` path; and verifies each resource and all override residue are
+absent before reporting success. Startup failures follow the same verified
+rollback, including when the helper mutates and then fails; an approved
+override that was already active before `up` is restored byte-for-byte instead
+of being removed. The lab shares the existing Redis dependency, so tests that
+create fixture keys still own deletion of those keys.
 
 Collision failures are intentional. Do not remove or rename someone else's
 container: choose another `--name` or port. `--network` can override the

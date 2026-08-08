@@ -49,22 +49,73 @@ IMAGE="rpg-api:toolkit-lab-${LAB_NAME}"
 STATE_DIR="$ROOT/tmp/toolkit-labs/$LAB_NAME"
 
 container_exists() { docker container inspect "$1" >/dev/null 2>&1; }
+image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
 
 verify_clean() {
-  if grep -Eq "^[[:space:]]*replace[[:space:]]+$MODULE[[:space:]]*=>[[:space:]]*\./local-toolkit/encounter" "$API_DIR/go.mod"; then
-    die "override residue remains in $API_DIR/go.mod; run '$OVERRIDE off' and inspect the worktree"
+  local failed=0 clean_status=""
+  if ! clean_status="$("$OVERRIDE" status)"; then
+    echo "error: API override helper status check failed after cleanup" >&2
+    failed=1
+  elif ! grep -Fq "Active replace modules (0): none" <<<"$clean_status"; then
+    echo "error: API override helper still reports an active replace after cleanup" >&2
+    failed=1
   fi
-  [ ! -e "$API_DIR/local-toolkit" ] || die "override residue remains at $API_DIR/local-toolkit"
+  if grep -Eq "^[[:space:]]*replace[[:space:]]+$MODULE[[:space:]]*=>[[:space:]]*\./local-toolkit/encounter" "$API_DIR/go.mod"; then
+    echo "error: override residue remains in $API_DIR/go.mod; run '$OVERRIDE off' and inspect the worktree" >&2
+    failed=1
+  fi
+  if [ -e "$API_DIR/local-toolkit" ]; then
+    echo "error: override residue remains at $API_DIR/local-toolkit" >&2
+    failed=1
+  fi
+  return "$failed"
+}
+
+remove_lab_resources() {
+  local failed=0
+  for container in "$ENVOY_CONTAINER" "$API_CONTAINER"; do
+    for _ in 1 2 3; do
+      container_exists "$container" || break
+      docker rm -f "$container" >/dev/null 2>&1 || true
+      for _ in 1 2 3 4 5; do
+        container_exists "$container" || break 2
+        sleep 0.2
+      done
+    done
+    if container_exists "$container"; then
+      echo "error: failed to remove name-scoped container '$container'" >&2
+      failed=1
+    fi
+  done
+  for _ in 1 2 3; do
+    image_exists "$IMAGE" || break
+    docker image rm "$IMAGE" >/dev/null 2>&1 || true
+    sleep 0.2
+  done
+  if image_exists "$IMAGE"; then
+    echo "error: failed to remove name-scoped image '$IMAGE'" >&2
+    failed=1
+  fi
+  rm -rf "$STATE_DIR"
+  if [ -e "$STATE_DIR" ]; then
+    echo "error: failed to remove generated lab state '$STATE_DIR'" >&2
+    failed=1
+  fi
+  return "$failed"
 }
 
 cleanup() {
-  docker rm -f "$ENVOY_CONTAINER" "$API_CONTAINER" >/dev/null 2>&1 || true
-  docker image rm "$IMAGE" >/dev/null 2>&1 || true
-  rm -rf "$STATE_DIR"
-  "$OVERRIDE" off
-  clean_status="$("$OVERRIDE" status)"
-  grep -Fq "Active replace modules (0): none" <<<"$clean_status" || die "API override helper still reports an active replace after cleanup"
-  verify_clean
+  local failed=0
+  if ! remove_lab_resources; then failed=1; fi
+  if ! "$OVERRIDE" off; then
+    echo "error: API override helper cleanup failed" >&2
+    failed=1
+  fi
+  if ! verify_clean; then failed=1; fi
+  if [ "$failed" -ne 0 ]; then
+    echo "error: lab '$LAB_NAME' cleanup is incomplete; inspect the errors above" >&2
+    return 1
+  fi
   echo "Lab '$LAB_NAME' is down; containers, image, generated Envoy config, and API override residue removed."
 }
 
@@ -108,27 +159,68 @@ if [ -n "$VITE_PORT" ]; then
   validate_port "Vite port" "$VITE_PORT"
 fi
 
+initial_status=""
+if ! initial_status="$("$OVERRIDE" status)"; then
+  die "API override helper status failed before startup; inspect the API worktree"
+fi
+override_preexisting=false
+if grep -Fq "Override ON: $MODULE" <<<"$initial_status"; then
+  override_preexisting=true
+elif ! grep -Fq "Active replace modules (0): none" <<<"$initial_status"; then
+  die "API override state is neither clean nor the approved encounter override"
+fi
+
 mkdir -p "$STATE_DIR"
 sed "s/address: rpg-api  # Docker service name/address: $API_CONTAINER  # isolated toolkit lab/" \
   "$ROOT/envoy/envoy.yaml" > "$STATE_DIR/envoy.yaml"
 grep -q "address: $API_CONTAINER" "$STATE_DIR/envoy.yaml" || die "failed to generate isolated Envoy upstream"
 
-override_on=false
+PREEXISTING_BACKUP="$STATE_DIR/preexisting-api-override"
+if [ "$override_preexisting" = true ]; then
+  mkdir -p "$PREEXISTING_BACKUP"
+  cp -a "$API_DIR/go.mod" "$PREEXISTING_BACKUP/go.mod"
+  if [ -e "$API_DIR/go.sum" ]; then cp -a "$API_DIR/go.sum" "$PREEXISTING_BACKUP/go.sum"; fi
+  [ -e "$API_DIR/local-toolkit" ] || die "approved pre-existing override has no local-toolkit directory to preserve"
+  cp -a "$API_DIR/local-toolkit" "$PREEXISTING_BACKUP/local-toolkit"
+fi
+
 up_failed() {
-  status=$?
+  local status=$? rollback_failed=0 restored_status=""
   if [ "$status" -ne 0 ]; then
-    docker rm -f "$ENVOY_CONTAINER" "$API_CONTAINER" >/dev/null 2>&1 || true
-    docker image rm "$IMAGE" >/dev/null 2>&1 || true
-    rm -rf "$STATE_DIR"
-    if [ "$override_on" = true ]; then "$OVERRIDE" off || true; fi
-    echo "error: lab startup failed; isolated resources were rolled back" >&2
+    if [ "$override_preexisting" = true ]; then
+      cp -a "$PREEXISTING_BACKUP/go.mod" "$API_DIR/go.mod" || rollback_failed=1
+      if [ -e "$PREEXISTING_BACKUP/go.sum" ]; then
+        cp -a "$PREEXISTING_BACKUP/go.sum" "$API_DIR/go.sum" || rollback_failed=1
+      else
+        rm -f "$API_DIR/go.sum" || rollback_failed=1
+      fi
+      rm -rf "$API_DIR/local-toolkit"
+      cp -a "$PREEXISTING_BACKUP/local-toolkit" "$API_DIR/local-toolkit" || rollback_failed=1
+      if ! restored_status="$("$OVERRIDE" status)" || ! grep -Fq "Override ON: $MODULE" <<<"$restored_status"; then
+        echo "error: failed to restore the pre-existing approved API override" >&2
+        rollback_failed=1
+      fi
+    else
+      if ! "$OVERRIDE" off; then
+        echo "error: API helper failed while rolling back a partial override activation" >&2
+        rollback_failed=1
+      fi
+      if ! verify_clean; then rollback_failed=1; fi
+    fi
+    if ! remove_lab_resources; then rollback_failed=1; fi
+    if [ "$rollback_failed" -ne 0 ]; then
+      echo "error: lab startup failed and rollback is incomplete; inspect the errors above" >&2
+    elif [ "$override_preexisting" = true ]; then
+      echo "error: lab startup failed; isolated resources were removed and the pre-existing API override was restored" >&2
+    else
+      echo "error: lab startup failed; isolated resources and partial API override state were removed" >&2
+    fi
   fi
   exit "$status"
 }
 trap up_failed EXIT
 
 "$OVERRIDE" on --src "$TOOLKIT_DIR"
-override_on=true
 status_output="$("$OVERRIDE" status)"
 grep -Fq "Override ON: $MODULE" <<<"$status_output" || die "existing override helper did not activate the approved encounter module"
 
