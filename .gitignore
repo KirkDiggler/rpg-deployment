@@ -48,4 +48,5 @@ node_modules/
 .terraform/
 
 # CloudFormation outputs
-cloudformation-outputs.json
+cloudformation-outputs.jsoncontent/*
+!content/README.md
