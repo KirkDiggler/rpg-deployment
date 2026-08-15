@@ -4,7 +4,6 @@ version: '3.8'
 services:
   rpg-api:
     image: ghcr.io/kirkdiggler/rpg-api:latest
-    container_name: rpg-api
     restart: unless-stopped
     expose:
       - "50051"
@@ -37,7 +36,6 @@ services:
 
   envoy:
     image: envoyproxy/envoy:v1.31-latest
-    container_name: rpg-envoy
     restart: unless-stopped
     expose:
       - "8080"

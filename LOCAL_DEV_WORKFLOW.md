@@ -1,10 +1,10 @@
 # Local Development Workflow
 
-This document describes the legacy individual-service and full-stack flows.
+This document describes individual-service and Docker Compose flows.
 For environment ownership and the supported isolated toolkit-override lab, read
-[LOCAL_DEV.md](LOCAL_DEV.md#which-local-environment-to-use) first. The primary
-`:8080` environment is the shared stable baseline; experiments must use an
-owned fixed lab or the isolated wrapper, never silently redeploy primary.
+[LOCAL_DEV.md](LOCAL_DEV.md#which-local-environment-to-use) first. Docker
+Compose environments must use an owned project name and Envoy host port; never
+silently redeploy another named environment.
 
 ## Option 1: Individual Services (coordinated primary work only)
 
@@ -52,26 +52,38 @@ curl -X POST http://localhost:8080/api.v1alpha1.DiceService/RollDice \
     -d '{"entity_id":"test","context":"test","notation":"1d20"}'
 ```
 
-## Option 2: Docker Compose Stack (From rpg-deployment)
+## Option 2: Named Docker Compose Stack (From rpg-deployment)
 
-For a fully containerized setup:
+For an isolated fully containerized environment, choose an owned Compose name
+and Envoy port. Only Envoy is host-published by this local contract; service
+DNS keeps Redis, the D&D API, and nginx-local inside the named network.
 
 ### Using Pre-built Images
 ```bash
 cd /home/kirk/personal/rpg-deployment
-docker compose -f docker-compose.local-dev.yml up -d
+export RPG_COMPOSE_PROJECT=frontend-dev
+export RPG_API_HOST_PORT=8080
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml up -d
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml logs -f envoy
 ```
 
-### Using Local Source Code
+### Using a Local API Image
 ```bash
 cd /home/kirk/personal/rpg-deployment
-docker compose -f docker-compose.local-src.yml up -d --build
+docker build -t rpg-api:local ../rpg-api
+RPG_API_IMAGE=rpg-api:local docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml \
+  -f docker-compose.local-api-src.yml up -d
 ```
 
+`docker-compose.local-src.yml` is a legacy containerized-web path outside this
+named supervisor.
+
 ### Access Points
-- All services through nginx: http://localhost
-- DND API: http://localhost:3002
-- Redis: localhost:6380
+- Envoy / gRPC-Web: `http://localhost:${RPG_API_HOST_PORT:-8080}`
+- All other services: private service-DNS endpoints on the named network
 
 ## Key Differences
 
@@ -107,7 +119,7 @@ This is why:
 
 ### "Bad Gateway" errors
 - Check if rpg-api is running: `lsof -i :50051`
-- Check Envoy logs: `docker logs <envoy-container>`
+- Check Envoy logs: `docker compose -p "$RPG_COMPOSE_PROJECT" -f docker-compose.local-dev.yml logs envoy`
 - Verify Envoy can reach rpg-api
 
 ### gRPC-Web not working
