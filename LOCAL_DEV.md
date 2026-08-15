@@ -146,34 +146,50 @@ make test
 
 ## Quick Start
 
-### Using Pre-built Images (Fastest)
+### Named pre-built environment (fastest)
+
+Each local environment must have its own Compose project name and host Envoy
+port. The local Compose contract publishes **only Envoy**; Redis, the D&D API,
+and nginx-local remain private to the project network.
 
 ```bash
-# Start all services using pre-built images from GitHub Container Registry
-docker compose -f docker-compose.local-dev.yml up -d
+export RPG_COMPOSE_PROJECT=my-rpg
+export RPG_API_HOST_PORT=8080
 
-# View logs
-docker compose -f docker-compose.local-dev.yml logs -f
+# Start all services using pre-built images from GitHub Container Registry.
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml up -d
 
-# Stop services
-docker compose -f docker-compose.local-dev.yml down
+# Follow one service's logs.
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml logs -f envoy
+
+# Stop this named environment.
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml down
 ```
 
-### Using Local Source Code (Development)
+### Named local API source environment
+
+Build the API image from a sibling API worktree, then use the source-image
+overlay with the same named supervisor:
 
 ```bash
-# Start all services building from local source directories
-docker compose -f docker-compose.local-src.yml up -d --build
+docker build -t rpg-api:local ../rpg-api
+export RPG_COMPOSE_PROJECT=api-dev
+export RPG_API_HOST_PORT=8080
+RPG_API_IMAGE=rpg-api:local docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml \
+  -f docker-compose.local-api-src.yml up -d
 
-# View logs
-docker compose -f docker-compose.local-src.yml logs -f
-
-# Rebuild after code changes
-docker compose -f docker-compose.local-src.yml up -d --build rpg-api
-
-# Stop services
-docker compose -f docker-compose.local-src.yml down
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml \
+  -f docker-compose.local-api-src.yml logs -f rpg-api
 ```
+
+`docker-compose.local-src.yml` is the legacy containerized-web path. It is
+outside this named local supervisor and is not the supported path for isolated
+local environments.
 
 ## Architecture
 
@@ -183,34 +199,29 @@ docker compose -f docker-compose.local-src.yml down
                     └──────┬──────┘
                            │
                     ┌──────▼──────┐
-                    │  nginx:80   │  (Single entry point)
+                    │ Envoy:8080  │  (only host-published service)
+                    │  (gRPC-Web) │
                     └──────┬──────┘
                            │
-            ┌──────────────┼──────────────┐
-            │              │              │
-     ┌──────▼──────┐ ┌────▼─────┐ ┌─────▼──────┐
-     │  Envoy:8080 │ │ Web:3000 │ │ DND-API:3000│
-     │  (gRPC-Web) │ │  (React) │ │   (REST)    │
-     └──────┬──────┘ └──────────┘ └─────┬──────┘
-            │                            │
-     ┌──────▼──────┐              ┌─────▼──────┐
-     │ RPG-API:50051│             │  MongoDB   │
-     │   (gRPC)    │              └────────────┘
-     └──────┬──────┘
-            │
-     ┌──────▼──────┐
-     │   Redis     │
-     └─────────────┘
+     ┌───────────────┬─────┴─────┬────────────────┐
+     │               │           │                │
+┌────▼─────┐  ┌──────▼──────┐ ┌──▼───────┐ ┌──────▼──────┐
+│RPG-API   │  │ nginx-local  │ │ DND-API  │ │   Redis     │
+│:50051    │  │ (internal)   │ │ :3000    │ │   :6379     │
+└──────────┘  └─────────────┘ └────┬─────┘ └─────────────┘
+                                    │
+                              ┌─────▼──────┐
+                              │  MongoDB   │
+                              └────────────┘
 ```
 
 ## Available Endpoints
 
-- **Main Entry**: http://localhost
-- **Health Check**: http://localhost/health
-- **gRPC-Web Services**: http://localhost/[service.name]/[method]
-- **DND API Proxy**: http://localhost/dnd-api/
-- **DND API Direct**: http://localhost:3002/api
-- **Redis**: localhost:6380
+- **Envoy / gRPC-Web**: `http://localhost:${RPG_API_HOST_PORT:-8080}`
+- **RPG API, Redis, D&D API, MongoDB, and nginx-local**: private service-DNS
+  endpoints on the named Compose network
+
+Only Envoy is host-published by this local contract.
 
 ## Configuration Files
 
@@ -220,11 +231,13 @@ Uses pre-built images from GitHub Container Registry. Best for:
 - Running stable versions
 - Minimal setup
 
+### `docker-compose.local-api-src.yml`
+Overrides `rpg-api` with `${RPG_API_IMAGE:-rpg-api:local}` for the named local
+supervisor. Build the image in the API worktree before starting the stack.
+
 ### `docker-compose.local-src.yml`
-Builds from local source code. Best for:
-- Active development
-- Testing local changes
-- Debugging
+Legacy containerized-web path. It is outside the named local supervisor and is
+not part of the isolated local environment contract.
 
 ### `nginx/nginx-local.conf`
 Basic nginx configuration without web frontend. Routes:
@@ -252,68 +265,67 @@ For local source builds, expects this directory structure:
 ### Test gRPC-Web connectivity:
 ```bash
 # Should return grpc-status header
-curl -X POST http://localhost/dnd5e.api.v1alpha1.ClassService/ListClasses \
+curl -X POST http://localhost:${RPG_API_HOST_PORT:-8080}/dnd5e.api.v1alpha1.ClassService/ListClasses \
   -H 'Content-Type: application/grpc-web+proto' \
   -H 'X-Grpc-Web: 1' \
   --data-binary '' -v
 ```
 
-### Test DND API:
+### Test the named Envoy endpoint:
 ```bash
-# Through nginx proxy
-curl http://localhost/dnd-api/classes
-
-# Direct access
-curl http://localhost:3002/api/classes
+curl http://localhost:${RPG_API_HOST_PORT:-8080}/health
 ```
 
 ### Test Health:
 ```bash
-curl http://localhost/health
+curl http://localhost:${RPG_API_HOST_PORT:-8080}/health
 ```
 
 ## Troubleshooting
 
 ### Port Conflicts
-If you get "address already in use" errors:
-- Port 80: Another web server is running
-- Port 6380: Another Redis instance
-- Port 3002: DND API already running
+The only host port in this local contract is Envoy's
+`${RPG_API_HOST_PORT:-8080}`. Choose a different `RPG_API_HOST_PORT` for a
+second named environment.
 
-Solution: Stop conflicting services or modify the port mappings in the compose files.
-
-### Container Won't Start
-Check logs for specific container:
+### Service Won't Start
+Check the service through its named Compose project:
 ```bash
-docker logs rpg-api
-docker logs rpg-envoy
-docker logs rpg-nginx-local
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml logs envoy
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml logs rpg-api
 ```
 
 ### Clean Restart
 ```bash
-# Remove everything and start fresh
-docker compose -f docker-compose.local-dev.yml down -v
-docker compose -f docker-compose.local-dev.yml up -d --force-recreate
+# Remove and recreate only this named environment.
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml down -v
+docker compose -p "$RPG_COMPOSE_PROJECT" \
+  -f docker-compose.local-dev.yml up -d --force-recreate
 ```
 
 ## Development Workflow
 
-1. Make changes to source code
-2. If using `local-src.yml`, rebuild affected services:
+1. Make changes to source code and rebuild `rpg-api:local` in its API worktree.
+2. Recreate the named API service with the source-image overlay:
    ```bash
-   docker compose -f docker-compose.local-src.yml up -d --build rpg-api
+   RPG_API_IMAGE=rpg-api:local docker compose -p "$RPG_COMPOSE_PROJECT" \
+     -f docker-compose.local-dev.yml \
+     -f docker-compose.local-api-src.yml up -d rpg-api
    ```
-3. Check logs for errors:
+3. Check logs through the named project:
    ```bash
-   docker compose -f docker-compose.local-src.yml logs -f rpg-api
+   docker compose -p "$RPG_COMPOSE_PROJECT" \
+     -f docker-compose.local-dev.yml \
+     -f docker-compose.local-api-src.yml logs -f rpg-api
    ```
-4. Test your changes through nginx at http://localhost
+4. Test through Envoy at `http://localhost:${RPG_API_HOST_PORT:-8080}`.
 
 ## Notes
 
-- All services communicate internally via Docker network
-- Only nginx is exposed externally on port 80
-- Envoy handles gRPC to gRPC-Web translation
-- Redis is exposed on 6380 (not 6379) to avoid conflicts
-- DND API is available on 3002 for direct access during development
+- All services communicate internally by service DNS on the named Docker network.
+- Only Envoy is published on `${RPG_API_HOST_PORT:-8080}`.
+- Envoy handles gRPC to gRPC-Web translation.
+- Redis, D&D API, and nginx-local are not host-published by this contract.

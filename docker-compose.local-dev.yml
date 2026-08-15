@@ -3,9 +3,6 @@ version: '3.8'
 services:
   redis:
     image: redis:7-alpine
-    container_name: rpg-redis-dev
-    ports:
-      - "6380:6379"
     networks:
       - rpg-network
     healthcheck:
@@ -16,7 +13,6 @@ services:
 
   dnd-database:
     image: ghcr.io/5e-bits/5e-database:latest
-    container_name: dnd-database
     networks:
       - rpg-network
     healthcheck:
@@ -27,9 +23,6 @@ services:
 
   dnd-api:
     image: ghcr.io/5e-bits/5e-srd-api:4.2.1
-    container_name: dnd-api
-    ports:
-      - "3002:3000"
     environment:
       - NODE_ENV=production
       - MONGODB_URI=mongodb://dnd-database:27017/5e-database
@@ -52,7 +45,6 @@ services:
     # workflow on every push to `dev`. Override RPG_API_IMAGE_TAG to pin a
     # different tag (e.g. `latest` for what's in production, or a sha).
     image: ghcr.io/kirkdiggler/rpg-api:${RPG_API_IMAGE_TAG:-dev}
-    container_name: rpg-api
     expose:
       - "50051"  # Only expose internally to Docker network
     environment:
@@ -74,9 +66,8 @@ services:
 
   envoy:
     image: envoyproxy/envoy:v1.31-latest
-    container_name: rpg-envoy
     ports:
-      - "8080:8080"  # host-accessible for the web dev-server's /connect proxy
+      - "${RPG_API_HOST_PORT:-8080}:8080"  # host-accessible for the web dev-server's /connect proxy
     expose:
       - "9901"  # Admin interface only internal
     volumes:
@@ -90,9 +81,6 @@ services:
   # Simple nginx for local dev without the web container
   nginx-local:
     image: nginx:alpine
-    container_name: rpg-nginx-local
-    ports:
-      - "80:80"
     volumes:
       - ./nginx/nginx-local.conf:/etc/nginx/nginx.conf:ro
     depends_on:

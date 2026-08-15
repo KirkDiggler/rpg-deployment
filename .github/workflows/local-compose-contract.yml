@@ -1,0 +1,13 @@
+name: Local Compose Contract
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  local-compose-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated local Compose contract
+        run: make test

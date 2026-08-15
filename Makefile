@@ -17,3 +17,4 @@ local-prod-logs:
 # Deployment-tooling regression checks (no live containers are started).
 test:
 	./scripts/test-toolkit-override-lab.sh
+	./tests/local-compose-contract.sh
