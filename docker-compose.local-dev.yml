@@ -53,6 +53,21 @@ services:
       - REDIS_ADDR=redis:6379
       - AUTH_DEV_MODE=true
       - DND5E_API_URL=http://dnd-api:3000/api/2014/
+      # Dungeon Builder authoring surface, same shape as production
+      # (docker-compose.prod.yml): without RPG_AUTHORING_ENABLED=1 the
+      # AuthoringService never registers, so the builder's 3D preview,
+      # validation, and Save & Play all fail with Unimplemented on a
+      # stock local stack. The gate REQUIRES RPG_CONTENT_DIR at
+      # construction; PutDungeon writes through to files there.
+      - RPG_AUTHORING_ENABLED=1
+      - RPG_CONTENT_DIR=/content
+    volumes:
+      # Authored dungeon YAMLs (write-through persistence for PutDungeon).
+      # Empty dir is valid — the api seeds reference content on boot
+      # (rpg-api#822); authored ones accumulate here across restarts.
+      # Shared by all isolated local env projects on purpose: dungeons are
+      # authored data, not per-env runtime state.
+      - ./content:/content
     depends_on:
       - redis
       - dnd-api
