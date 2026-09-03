@@ -50,6 +50,15 @@ services:
     volumes:
       # Authored dungeon YAMLs (write-through persistence). Empty dir is
       # valid -- embedded dungeons always exist; authored ones accumulate.
+      #
+      # AND NOTHING HERE EVER CLEARS IT. Untracked paths survive the
+      # pipeline's `git reset --hard`, which is the property this volume was
+      # given on purpose and which makes a file the api can no longer read a
+      # standing boot refusal: the registry is built at construction, so the
+      # first uncompilable file takes the whole api down rather than being
+      # skipped. When a dungeon dialect changes under it, run
+      # scripts/clear-legacy-dungeon-content.sh on the box ONCE, by hand,
+      # before the deploy that carries the new api.
       - ./content:/content
     depends_on:
       - redis
