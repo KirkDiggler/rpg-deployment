@@ -18,3 +18,4 @@ local-prod-logs:
 test:
 	./scripts/test-toolkit-override-lab.sh
 	./tests/local-compose-contract.sh
+	./tests/guild-world-header-contract.sh
