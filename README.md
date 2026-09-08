@@ -6,6 +6,8 @@
 
 Complete deployment pipeline for the RPG gaming platform with modular architecture.
 
+**Looking for the existing production server?** See the [server access and inspection guide](docs/server-access.md) for SSH/SSM, the correct AWS profile, container logs, deployed versions, and safety notes.
+
 ## 🏗️ Components
 
 - **rpg-api**: Go gRPC server (separate repository)
@@ -325,24 +327,13 @@ curl http://YOUR-IP/health
 curl -H "Content-Type: application/grpc-web+proto" http://YOUR-IP/api/health
 ```
 
-### 🖥️ Server Access (SSM Session Manager)
+### 🖥️ Server Access
 
-```bash
-# Connect to server (no SSH keys required!)
-aws ssm start-session --target $(aws cloudformation describe-stacks \
-  --stack-name rpg-gaming-platform \
-  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
-  --output text)
-
-# Once connected, check container status
-sudo -u ec2-user -i
-cd /opt/rpg-deployment
-docker-compose -f docker-compose.prod.yml ps
-docker-compose -f docker-compose.prod.yml logs --tail=50
-
-# Check resource usage
-docker stats --no-stream
-```
+Use the [production server access guide](docs/server-access.md). It covers the
+existing Ubuntu host, SSH and SSM, explicit AWS profile selection, read-only
+container inspection, and how to distinguish deployment configuration from the
+running API/web image revisions. Kirk's workstation uses profile `personal` in
+`us-west-2`; do not use unrelated work-account defaults or recreate the SSH key.
 
 ### ☁️ AWS Management
 ```bash
