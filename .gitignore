@@ -9,7 +9,7 @@ aws-credentials.txt
 *.key
 
 # Git
-./worktrees
+.worktrees/
 
 # Docker
 .docker/
