@@ -8,6 +8,9 @@ aws-credentials.txt
 *.pem
 *.key
 
+# Git
+.worktrees/
+
 # Docker
 .docker/
 
