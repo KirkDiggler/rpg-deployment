@@ -89,8 +89,11 @@ operator-authored dungeons do not get restored automatically.
 
 ## Checks and production
 
-`make test` checks named-project isolation, Compose retirement across entry
-points, lab tooling and guild-header routing without starting live containers.
+`make test` checks the intended four-service local stack, named-project
+isolation, lab tooling and guild-header routing without starting live containers.
+To include the workspace's actual persistent-Redis overlays in that same stack
+check, run `GAME_DEV_ROOT=/path/to/game-dev make test`. Redis lifecycle and
+data-preservation tests remain in game-dev; no retired-service behavior is tested.
 
 Use `make local-prod` for the published-image local parity stack. Production uses
 `docker-compose.prod.yml`, not the legacy full-stack file. A merge to deployment
