@@ -14,39 +14,6 @@ services:
       timeout: 5s
       retries: 3
 
-  dnd-database:
-    image: ghcr.io/5e-bits/5e-database:latest
-    container_name: dnd-database
-    networks:
-      - rpg-network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  dnd-api:
-    image: ghcr.io/5e-bits/5e-srd-api:4.2.1
-    container_name: dnd-api
-    ports:
-      - "3002:3000"
-    environment:
-      - NODE_ENV=production
-      - MONGODB_URI=mongodb://dnd-database:27017/5e-database
-      - REDIS_URL=redis://redis:6379
-      - RATE_LIMIT_WINDOW_MS=1000
-      - RATE_LIMIT_MAX=1000
-    depends_on:
-      - dnd-database
-      - redis
-    networks:
-      - rpg-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   # Build rpg-api from local source
   rpg-api:
     build:
@@ -59,10 +26,8 @@ services:
       - PORT=50051
       - LOG_LEVEL=info
       - REDIS_ADDR=redis:6379
-      - DND5E_API_URL=http://dnd-api:3000/api/2014/
     depends_on:
       - redis
-      - dnd-api
     networks:
       - rpg-network
     healthcheck:

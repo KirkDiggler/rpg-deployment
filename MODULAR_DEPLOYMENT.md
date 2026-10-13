@@ -1,197 +1,98 @@
-# Modular Deployment Guide
+# Modular deployment
 
-This guide explains how to use the modular Docker Compose setup for flexible deployment options.
+The game uses the RPG API and Redis. Rules live in the toolkit; an auxiliary
+rules API, MongoDB and its cache are not runtime dependencies.
 
-## Overview
+## Compose entry points
 
-The deployment is split into modular components:
-- `docker-compose.base.yml` - Core services (Redis, networking)
-- `docker-compose.dnd.yml` - D&D 5e API services
-- `docker-compose.api.yml` - RPG API and Envoy proxy
-- `docker-compose.web.yml` - Web UI and Nginx
-- `docker-compose.yml` - Full stack (includes all above)
-- `docker-compose.local-dev.yml` + `docker-compose.local-api-src.yml` - named
-  local supervisor and optional local API image overlay
+| File | Role |
+|---|---|
+| `docker-compose.base.yml` | Redis and the shared network for modular commands |
+| `docker-compose.api.yml` | RPG API and Envoy |
+| `docker-compose.web.yml` | Web UI and nginx |
+| `docker-compose.local-dev.yml` | Named local backend stack for a host-side Vite server |
+| `docker-compose.local-api-src.yml` | Override the local backend's API image |
+| `docker-compose.local-lab.yml` | Optional parallel API/Envoy instances |
+| `docker-compose.local-prod.yml` | Published-image production-parity stack on localhost:8090 |
+| `docker-compose.prod.yml` | Production stack used by the deployment workflow |
+| `docker-compose.yml` | Legacy full-stack entry point |
+| `docker-compose.dnd.yml`, `docker-compose.local.yml` | Empty compatibility overlays for older command lines |
 
-## Named Local Compose Contract
+Compose files compose. Add environment-specific settings through overlays and
+variables instead of copying a stack. The compatibility overlays create no
+services and delete no Docker volumes.
 
-For isolated local environments, use `docker-compose.local-dev.yml` with an
-owned project name and Envoy host port. This contract publishes **only Envoy**;
-Redis, the D&D API, nginx-local, and their data services communicate solely by
-service DNS on the project-derived network.
+## Normal workspace development
 
-```bash
+From the **game-dev root checkout**:
+
+```sh
+scripts/dev-env.sh up dev
+scripts/dev-env.sh status dev
+scripts/dev-env.sh down dev
+```
+
+The workspace supervisor selects source revisions, builds the API, owns the
+Compose project and Vite process, and mirrors the assets pinned by Web. Its
+persistent-Redis overlay keeps game data between restarts. That overlay must
+not reintroduce any retired services.
+
+## Named local Compose contract
+
+For direct backend checks from this repository:
+
+```sh
 export RPG_COMPOSE_PROJECT=game-dev
 export RPG_API_HOST_PORT=8080
 
 docker compose -p "$RPG_COMPOSE_PROJECT" \
   -f docker-compose.local-dev.yml up -d
-docker compose -p "$RPG_COMPOSE_PROJECT" \
-  -f docker-compose.local-dev.yml logs -f envoy
 ```
 
-Use a prebuilt local API image with the overlay when needed:
+Only Envoy is published to the host. Redis, the RPG API and nginx-local use
+service DNS on the project-derived network. There are no fixed container names.
+The API depends on Redis alone.
 
-```bash
+To use a prebuilt API image:
+
+```sh
 RPG_API_IMAGE=rpg-api:local docker compose -p "$RPG_COMPOSE_PROJECT" \
   -f docker-compose.local-dev.yml \
   -f docker-compose.local-api-src.yml up -d
 ```
 
-`docker-compose.local-src.yml` is the legacy containerized-web path. It is
-outside the named local supervisor and not part of this isolated local contract.
+The host-side Web server's `VITE_API_HOST` points to
+`http://localhost:${RPG_API_HOST_PORT:-8080}`. `docker-compose.local-src.yml` is
+a separate legacy containerized-Web path, not the normal Vite supervisor.
 
-## Common Use Cases
+The modular equivalent without a Web container is:
 
-### 1. Full Stack Deployment
-```bash
-# Using the main compose file (recommended)
-docker compose up -d
-
-# Or explicitly with all modules
-docker compose -f docker-compose.base.yml \
-               -f docker-compose.dnd.yml \
-               -f docker-compose.api.yml \
-               -f docker-compose.web.yml up -d
+```sh
+docker compose -f docker-compose.base.yml -f docker-compose.api.yml up -d
 ```
 
-### 2. API Image Development Mode
-Build the API in its worktree, then run it through the named local supervisor:
-```bash
-docker build -t rpg-api:local ../rpg-api
-RPG_API_IMAGE=rpg-api:local docker compose -p "$RPG_COMPOSE_PROJECT" \
-  -f docker-compose.local-dev.yml \
-  -f docker-compose.local-api-src.yml up -d rpg-api
-```
+Add `docker-compose.web.yml` for the Web container and nginx. Internal traffic
+flows through nginx → Envoy → RPG API → Redis. The API's Redis address is
+`REDIS_ADDR=redis:6379`; no auxiliary rules URL is required.
 
-### 3. Frontend Development Mode
-When developing the web UI:
-```bash
-# Start backend services
-docker compose -f docker-compose.base.yml \
-               -f docker-compose.dnd.yml \
-               -f docker-compose.api.yml up -d
+## Authored dungeon content
 
-# Run your frontend locally
-cd rpg-dnd5e-web
-npm run dev
-```
+`./content` is runtime state mounted at `/content`, not source-controlled
+fixtures. The API seeds missing built-in reference dungeons from its current
+image. It does not overwrite existing authored or edited files, and refuses an
+incompatible dungeon rather than silently ignoring it.
 
-### 4. D&D API Service
-The D&D API is private service DNS in the named local contract. Test through
-the Envoy endpoint or from a container attached to the named project network;
-it has no direct host publication.
+Before clearing obsolete content, stop its stack and archive the selected YAMLs
+outside the mounted directory. Keep Redis data and source/test YAMLs separate
+from this operation. Fresh references appear on the next boot; arbitrary
+operator-authored dungeons do not get restored automatically.
 
-### 5. Minimal API Stack
-Run API without the web UI:
-```bash
-docker compose -f docker-compose.base.yml \
-               -f docker-compose.dnd.yml \
-               -f docker-compose.api.yml up -d
-```
+## Checks and production
 
-## Service Dependencies
+`make test` checks named-project isolation, Compose retirement across entry
+points, lab tooling and guild-header routing without starting live containers.
 
-```
-┌─────────────┐
-│    nginx    │ (docker-compose.web.yml)
-└──────┬──────┘
-       │ depends on
-┌──────▼──────┐     ┌─────────────┐
-│   rpg-web   │     │    envoy    │ (docker-compose.api.yml)
-└──────┬──────┘     └──────┬──────┘
-       │ depends on        │ depends on
-       └──────┬────────────┘
-              ▼
-       ┌─────────────┐
-       │   rpg-api   │ (docker-compose.api.yml)
-       └──────┬──────┘
-              │ depends on
-       ┌──────▼──────┐     ┌─────────────┐
-       │    redis    │     │   dnd-api   │
-       └─────────────┘     └──────┬──────┘
-    (compose.base.yml)            │ depends on
-                           ┌──────▼──────┐
-                           │dnd-database │
-                           └─────────────┘
-                        (compose.dnd.yml)
-```
-
-## Environment Variables
-
-### For Named Local Development
-```bash
-# Choose these at the Compose boundary.
-export RPG_COMPOSE_PROJECT=game-dev
-export RPG_API_HOST_PORT=8080
-export RPG_API_IMAGE=rpg-api:local
-```
-
-The Compose files provide service-DNS URLs for internal dependencies; hosts use
-only Envoy at `http://localhost:${RPG_API_HOST_PORT:-8080}`.
-
-### For Docker Deployment
-These are set in the compose files but can be overridden:
-```bash
-# Create .env file
-cat > .env << EOF
-DND5E_API_URL=http://dnd-api:3000/api/
-REDIS_URL=redis://redis:6379
-LOG_LEVEL=info
-EOF
-
-docker compose up -d
-```
-
-## Ports Reference
-
-| Service | Internal Port | External Port | Purpose |
-|---------|--------------|---------------|---------|
-| Redis | 6379 | - | Data storage (private service DNS) |
-| MongoDB | 27017 | - | D&D data (private service DNS) |
-| D&D API | 3000 | - | REST API (private service DNS) |
-| RPG API | 50051 | - | gRPC (private service DNS) |
-| Envoy | 8080 | `${RPG_API_HOST_PORT:-8080}` | gRPC-Web and only host publication |
-| nginx-local | 80 | - | Internal local route |
-
-## Tips
-
-1. **Check one named local environment:**
-   ```bash
-   docker compose -p "$RPG_COMPOSE_PROJECT" \
-     -f docker-compose.local-dev.yml ps
-   ```
-
-2. **View logs for one service:**
-   ```bash
-   docker compose -p "$RPG_COMPOSE_PROJECT" \
-     -f docker-compose.local-dev.yml logs -f rpg-api
-   ```
-
-3. **Stop the named local environment:**
-   ```bash
-   docker compose -p "$RPG_COMPOSE_PROJECT" \
-     -f docker-compose.local-dev.yml down
-   ```
-
-4. **Recreate a local API image service:**
-   ```bash
-   RPG_API_IMAGE=rpg-api:local docker compose -p "$RPG_COMPOSE_PROJECT" \
-     -f docker-compose.local-dev.yml \
-     -f docker-compose.local-api-src.yml up -d rpg-api
-   ```
-
-5. **Clean up a named local environment:**
-   ```bash
-   docker compose -p "$RPG_COMPOSE_PROJECT" \
-     -f docker-compose.local-dev.yml down -v
-   ```
-
-## Production vs Development
-
-For production, use the main `docker-compose.yml` with production overrides:
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-For local development, use the modular approach described above.
+Use `make local-prod` for the published-image local parity stack. Production uses
+`docker-compose.prod.yml`, not the legacy full-stack file. A merge to deployment
+`main` triggers its production deployment workflow; treat that as an explicit
+operational effect, even when a change mainly concerns local development.

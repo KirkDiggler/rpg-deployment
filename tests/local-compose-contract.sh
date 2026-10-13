@@ -22,7 +22,9 @@ assert_config() {
     .services.envoy.ports[0].published == $port and
     .networks["rpg-network"].name == ($project + "_rpg-network") and
     .services["rpg-api"].environment.REDIS_ADDR == "redis:6379" and
-    (.services["rpg-api"].environment.DND5E_API_URL | startswith("http://dnd-api:3000/"))
+    (.services | keys | sort) == ["envoy", "nginx-local", "redis", "rpg-api"] and
+    (.services["rpg-api"].depends_on | keys) == ["redis"] and
+    (.services["rpg-api"].environment | has("DND5E_API_URL") | not)
   ' <<<"$json" >/dev/null
 }
 
