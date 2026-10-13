@@ -228,7 +228,7 @@ docker build -f "$API_DIR/Dockerfile.local-toolkit" -t "$IMAGE" "$API_DIR"
 docker run -d --name "$API_CONTAINER" --network "$NETWORK" \
   --label "rpg.toolkit-lab=$LAB_NAME" \
   -e PORT=50051 -e LOG_LEVEL=info -e REDIS_ADDR=redis:6379 -e AUTH_DEV_MODE=true \
-  -e DND5E_API_URL=http://dnd-api:3000/api/2014/ "$IMAGE" >/dev/null
+  "$IMAGE" >/dev/null
 docker run -d --name "$ENVOY_CONTAINER" --network "$NETWORK" \
   --label "rpg.toolkit-lab=$LAB_NAME" -p "$ENVOY_PORT:8080" \
   -v "$STATE_DIR/envoy.yaml:/etc/envoy/envoy.yaml:ro" envoyproxy/envoy:v1.31-latest \

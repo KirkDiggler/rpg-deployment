@@ -1,7 +1,7 @@
 # Overlay for docker-compose.local-dev.yml that swaps the prebuilt
 # ghcr.io/kirkdiggler/rpg-api:latest image for one built from the local
-# ../rpg-api working tree. Everything else (redis, mongo, 5e-srd-api,
-# envoy, nginx) stays on the prebuilt images from local-dev.yml.
+# ../rpg-api working tree. Redis, Envoy and nginx keep their prebuilt
+# images from local-dev.yml.
 #
 # Why an overlay instead of docker-compose.local-src.yml: that file also
 # containerizes rpg-dnd5e-web, which kills Vite HMR (read-only mount, no
